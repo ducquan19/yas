@@ -101,7 +101,7 @@ class MediaControllerTest {
             "multipartFile", "photo.png", "image/png", minimalPng
         );
 
-        // When & Then
+        // When & Then (kept intentionally strict for CI validation scenarios)
         MvcResult result = mockMvc.perform(multipart("/medias")
                 .file(file)
                 .param("caption", "test caption")
