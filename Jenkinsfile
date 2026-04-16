@@ -124,7 +124,7 @@ pipeline {
           } else {
             currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
             echo "Changed files:\n${changedFiles.join('\n')}"
-            echo 'No Maven service module changed; skipping Test/Build.'
+            echo 'No Maven service module changed; Test/Build stages will run as no-ops.'
           }
         }
       }
@@ -153,32 +153,34 @@ pipeline {
     }
 
     stage('Test (upload results + coverage)') {
-      when {
-        expression { return env.AFFECTED_MODULES?.trim() }
-      }
       steps {
         script {
-          def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+          if (env.AFFECTED_MODULES?.trim()) {
+            def mods = env.AFFECTED_MODULES
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            }
           } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            echo 'No affected module detected; skipping tests (still running stage).'
           }
         }
       }
     }
 
     stage('Build') {
-      when {
-        expression { return env.AFFECTED_MODULES?.trim() }
-      }
       steps {
         script {
-          def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+          if (env.AFFECTED_MODULES?.trim()) {
+            def mods = env.AFFECTED_MODULES
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+            }
           } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+            echo 'No affected module detected; skipping build (still running stage).'
           }
         }
       }
