@@ -92,18 +92,20 @@ pipeline {
           def allModules = readMavenModulesFromRootPom()
           def changedFiles = computeChangedFiles()
 
+          // Normalize once, then reuse for all matching logic.
+          // This handles ANSI color codes and path variants (./, \) from git output.
+          def normalizedChangedFiles = changedFiles
+            .collect { it.replaceAll('\\u001B\\[[;\\d]*m', '').trim() }
+            .collect { it.replace('\\', '/') }
+            .collect { it.replaceFirst(/^\.\//, '') }
+            .findAll { it }
+
           // Root-level changes that should rebuild everything
-          def rebuildAll = changedFiles.any { f ->
-            f == 'pom.xml' ||
-            f == 'Jenkinsfile' ||
+          def rebuildAll = normalizedChangedFiles.any { f ->
+            f.equalsIgnoreCase('pom.xml') ||
+            f.equalsIgnoreCase('Jenkinsfile') ||
             f.startsWith('checkstyle/')
           }
-
-          // Normalize separators to support both Linux and Windows-style paths,
-          // then map changed files directly to Maven modules.
-          def normalizedChangedFiles = changedFiles
-            .collect { it.replace('\\', '/').trim() }
-            .findAll { it }
 
           def touchedTopDirs = normalizedChangedFiles
             .findAll { it.contains('/') }
@@ -129,11 +131,11 @@ pipeline {
 
           if (env.AFFECTED_MODULES?.trim()) {
             currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${env.AFFECTED_MODULES}"
-            echo "Changed files:\n${changedFiles.join('\n')}"
+            echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
             echo "Affected Maven modules: ${env.AFFECTED_MODULES}"
           } else {
             currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
-            echo "Changed files:\n${changedFiles.join('\n')}"
+            echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
             echo 'No Maven service module changed; Test/Build stages will run as no-ops.'
           }
         }
