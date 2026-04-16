@@ -99,12 +99,22 @@ pipeline {
             f.startsWith('checkstyle/')
           }
 
-          def touchedTopDirs = changedFiles
+          // Normalize separators to support both Linux and Windows-style paths,
+          // then map changed files directly to Maven modules.
+          def normalizedChangedFiles = changedFiles
+            .collect { it.replace('\\', '/').trim() }
+            .findAll { it }
+
+          def touchedTopDirs = normalizedChangedFiles
             .findAll { it.contains('/') }
             .collect { it.tokenize('/')[0] }
             .unique()
 
-          def affected = touchedTopDirs.findAll { d -> allModules.contains(d) }
+          def affected = allModules.findAll { module ->
+            normalizedChangedFiles.any { f ->
+              f == module || f.startsWith("${module}/")
+            }
+          }
 
           if (rebuildAll) {
             affected = allModules
