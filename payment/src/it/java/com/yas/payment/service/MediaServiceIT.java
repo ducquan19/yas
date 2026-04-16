@@ -44,7 +44,7 @@ public class MediaServiceIT {
     }
 
     @Test
-    @DisplayName("when media service is unavailable, service should return empty")
+    @DisplayName("provider image, when media service is unavailable, service should return empty")
     public void getMedia_whenMediaServiceIsUnavailable_shouldReturnEmpty() {
         // Given
         when(restClient.get()).thenThrow(new HttpServerErrorException(HttpStatus.SERVICE_UNAVAILABLE));
