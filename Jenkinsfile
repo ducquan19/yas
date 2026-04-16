@@ -11,14 +11,14 @@ def computeChangedFiles() {
 
   if (env.CHANGE_TARGET) {
     // PR build (Multibranch): diff against merge-base with target branch
-    cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
+    cmd = "git -c color.ui=never diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
   } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
-    cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
+    cmd = "git -c color.ui=never diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
   } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
-    cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
+    cmd = "git -c color.ui=never diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
   } else {
     // Fallback: only last commit
-    cmd = 'git show --name-only --pretty="" HEAD'
+    cmd = 'git -c color.ui=never show --name-only --pretty="" HEAD'
   }
 
   try {
@@ -28,7 +28,7 @@ def computeChangedFiles() {
       .collect { it.trim() }
       .findAll { it }
   } catch (err) {
-    def out = runCapture('git show --name-only --pretty="" HEAD')
+    def out = runCapture('git -c color.ui=never show --name-only --pretty="" HEAD')
     return out
       .split(/\r?\n/)
       .collect { it.trim() }
