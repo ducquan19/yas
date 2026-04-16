@@ -47,6 +47,10 @@ def readMavenModulesFromRootPom() {
 pipeline {
   agent any
 
+  tools {
+    maven 'maven3' // Name of Maven installation configured in Jenkins global tools
+  }
+
   // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
   // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
   options {
@@ -65,6 +69,7 @@ pipeline {
     MVN_ARGS = '-B -ntp'
     AFFECTED_MODULES = ''
     MVN_MAKE_FLAGS = '-am'
+    REBUILD_ALL_ON_JENKINSFILE = 'false'
   }
 
   stages {
@@ -99,8 +104,11 @@ pipeline {
           // Root-level changes that should rebuild everything
           def rebuildAll = normalizedChangedFiles.any { f ->
             f.equalsIgnoreCase('pom.xml') ||
-            f.equalsIgnoreCase('Jenkinsfile') ||
             f.startsWith('checkstyle/')
+          }
+
+          if (env.REBUILD_ALL_ON_JENKINSFILE?.toBoolean()) {
+            rebuildAll = rebuildAll || normalizedChangedFiles.any { f -> f.equalsIgnoreCase('Jenkinsfile') }
           }
 
           def touchedTopDirs = normalizedChangedFiles
@@ -149,12 +157,6 @@ pipeline {
     }
 
     stage('Install dependencies') {
-      agent {
-        docker {
-          image 'maven:3.9.9-eclipse-temurin-25'
-          reuseNode true
-        }
-      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
@@ -177,12 +179,6 @@ pipeline {
     }
 
     stage('Test (upload results + coverage)') {
-      agent {
-        docker {
-          image 'maven:3.9.9-eclipse-temurin-25'
-          reuseNode true
-        }
-      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
@@ -200,12 +196,6 @@ pipeline {
     }
 
     stage('Build') {
-      agent {
-        docker {
-          image 'maven:3.9.9-eclipse-temurin-25'
-          reuseNode true
-        }
-      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
