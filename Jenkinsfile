@@ -38,9 +38,21 @@ def computeChangedFiles() {
 
 def readMavenModulesFromRootPom() {
   def pom = readFile('pom.xml')
-  def matcher = (pom =~ /<module>([^<]+)<\/module>/)
   def modules = []
-  matcher.each { m -> modules << m[1].trim() }
+
+  try {
+    // Prefer XML parsing for reliability; fallback to regex if needed.
+    def xml = new XmlSlurper(false, false).parseText(pom)
+    modules = xml.modules.module.collect { it.text().trim() }.findAll { it }
+  } catch (ignored) {
+    // Ignore and fallback to regex below.
+  }
+
+  if (!modules) {
+    def matcher = (pom =~ /<module>([^<]+)<\/module>/)
+    matcher.each { m -> modules << m[1].trim() }
+  }
+
   return modules.unique()
 }
 
@@ -121,6 +133,12 @@ pipeline {
           if (rebuildAll) {
             affected = allModules
           }
+
+          // Debug outputs to troubleshoot module detection in Jenkins logs.
+          echo "All Maven modules (${allModules.size()}): ${allModules.join(',')}"
+          echo "rebuildAll=${rebuildAll}"
+          echo "Touched top dirs: ${touchedTopDirs.join(',')}"
+          echo "Affected modules (pre-env): ${affected.join(',')}"
 
           // If common-library changes, rebuild dependents too.
           if (affected.contains('common-library')) {
