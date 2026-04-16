@@ -1,41 +1,33 @@
+// Helper: run shell command and capture output (Linux only)
 def runCapture(String cmd) {
-  if (isUnix()) {
-    return sh(script: cmd, returnStdout: true).trim()
-  }
-  // On Windows agents, `bat(returnStdout: true)` returns with CRLF; normalize later.
-  return bat(script: cmd, returnStdout: true).trim()
+  return sh(script: cmd, returnStdout: true).trim()
 }
 
+// Compute changed files between commits or PR
 def computeChangedFiles() {
   def cmd = null
 
   if (env.CHANGE_TARGET) {
-    // PR build (Multibranch): diff against merge-base with target branch
+    // PR build: compare with target branch
     cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
   } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
     cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
   } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
     cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
   } else {
-    // Fallback: only last commit
     cmd = 'git show --name-only --pretty="" HEAD'
   }
 
   try {
     def out = runCapture(cmd)
-    return out
-      .split(/\r?\n/)
-      .collect { it.trim() }
-      .findAll { it }
+    return out.split(/\r?\n/).collect { it.trim() }.findAll { it }
   } catch (err) {
     def out = runCapture('git show --name-only --pretty="" HEAD')
-    return out
-      .split(/\r?\n/)
-      .collect { it.trim() }
-      .findAll { it }
+    return out.split(/\r?\n/).collect { it.trim() }.findAll { it }
   }
 }
 
+// Read all Maven modules from root pom.xml
 def readMavenModulesFromRootPom() {
   def pom = readFile('pom.xml')
   def matcher = (pom =~ /<module>([^<]+)<\/module>/)
@@ -47,8 +39,6 @@ def readMavenModulesFromRootPom() {
 pipeline {
   agent any
 
-  // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
-  // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
   options {
     timestamps()
     disableConcurrentBuilds()
@@ -56,7 +46,6 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '30'))
   }
 
-  // Fallback trigger if webhooks/branch indexing isn't configured.
   triggers {
     pollSCM('H/15 * * * *')
   }
@@ -68,17 +57,12 @@ pipeline {
   }
 
   stages {
+
     stage('Checkout code') {
       steps {
         checkout scm
-        script {
-          // Ensure remote refs exist for diff calculations (PR builds, etc.)
-          if (isUnix()) {
-            sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
-          } else {
-            bat 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
-          }
-        }
+        // Fetch full refs to ensure diff works correctly
+        sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
       }
     }
 
@@ -88,25 +72,27 @@ pipeline {
           def allModules = readMavenModulesFromRootPom()
           def changedFiles = computeChangedFiles()
 
-          // Root-level changes that should rebuild everything
+          // If core files change → rebuild everything
           def rebuildAll = changedFiles.any { f ->
             f == 'pom.xml' ||
             f == 'Jenkinsfile' ||
             f.startsWith('checkstyle/')
           }
 
+          // Extract top-level directories from changed files
           def touchedTopDirs = changedFiles
             .findAll { it.contains('/') }
             .collect { it.tokenize('/')[0] }
             .unique()
 
+          // Match directories with Maven modules
           def affected = touchedTopDirs.findAll { d -> allModules.contains(d) }
 
           if (rebuildAll) {
             affected = allModules
           }
 
-          // If common-library changes, rebuild dependents too.
+          // If shared library changes → rebuild dependents
           if (affected.contains('common-library')) {
             env.MVN_MAKE_FLAGS = '-am -amd'
           }
@@ -127,18 +113,9 @@ pipeline {
     }
 
     stage('Install dependencies') {
-    //   when {
-    //     expression { return env.AFFECTED_MODULES?.trim() }
-    //   }
       steps {
-        script {
-          def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
-          }
-        }
+        // Pre-download dependencies to speed up build
+        sh "mvn ${env.MVN_ARGS} -DskipTests dependency:go-offline"
       }
     }
 
@@ -149,11 +126,7 @@ pipeline {
       steps {
         script {
           def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
-          }
+          sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
         }
       }
     }
@@ -165,11 +138,7 @@ pipeline {
       steps {
         script {
           def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
-          }
+          sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
         }
       }
     }
@@ -177,15 +146,15 @@ pipeline {
 
   post {
     always {
-      // Upload JUnit test results
+      // Publish JUnit test results
       junit allowEmptyResults: true,
             testResults: '**/target/surefire-reports/*.xml,**/target/failsafe-reports/*.xml'
 
-      // Upload coverage artifacts produced by jacoco-maven-plugin (configured in root pom.xml)
+      // Archive coverage artifacts (JaCoCo)
       archiveArtifacts allowEmptyArchive: true,
                        artifacts: '**/target/site/jacoco/**,**/target/jacoco.exec'
 
-      // Keep build artifacts if any were produced
+      // Archive build artifacts
       archiveArtifacts allowEmptyArchive: true,
                        artifacts: '**/target/*.jar,**/target/*.war'
     }
