@@ -47,10 +47,6 @@ def readMavenModulesFromRootPom() {
 pipeline {
   agent any
 
-  tools {
-    maven 'maven3' // Name of Maven installation configured in Jenkins global tools
-  }
-
   // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
   // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
   options {
@@ -153,6 +149,12 @@ pipeline {
     }
 
     stage('Install dependencies') {
+      agent {
+        docker {
+          image 'maven:3.9.9-eclipse-temurin-25'
+          reuseNode true
+        }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
@@ -175,6 +177,12 @@ pipeline {
     }
 
     stage('Test (upload results + coverage)') {
+      agent {
+        docker {
+          image 'maven:3.9.9-eclipse-temurin-25'
+          reuseNode true
+        }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
@@ -192,6 +200,12 @@ pipeline {
     }
 
     stage('Build') {
+      agent {
+        docker {
+          image 'maven:3.9.9-eclipse-temurin-25'
+          reuseNode true
+        }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
