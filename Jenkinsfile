@@ -1,9 +1,24 @@
 def runCapture(String cmd) {
-  if (isUnix()) {
-    return sh(script: cmd, returnStdout: true).trim()
+  return sh(script: cmd, returnStdout: true).trim()
+}
+
+def assertSafeGitBranchName(String ref, String what) {
+  if (ref == null) {
+    return
   }
-  // On Windows agents, `bat(returnStdout: true)` returns with CRLF; normalize later.
-  return bat(script: cmd, returnStdout: true).trim()
+  // Allow typical branch names like feature/foo-bar_1
+  if (!(ref ==~ /^[0-9A-Za-z._\/-]+$/)) {
+    error("Unsafe ${what} value: '${ref}'")
+  }
+}
+
+def assertSafeGitCommit(String sha, String what) {
+  if (sha == null) {
+    return
+  }
+  if (!(sha ==~ /^[0-9a-fA-F]{7,40}$/)) {
+    error("Unsafe ${what} value: '${sha}'")
+  }
 }
 
 def computeChangedFiles() {
@@ -11,11 +26,16 @@ def computeChangedFiles() {
 
   if (env.CHANGE_TARGET) {
     // PR build (Multibranch): diff against merge-base with target branch
-    cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
+    assertSafeGitBranchName(env.CHANGE_TARGET, 'CHANGE_TARGET')
+    cmd = "git diff --name-only \"origin/${env.CHANGE_TARGET}...HEAD\""
   } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
-    cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
+    assertSafeGitCommit(env.GIT_PREVIOUS_SUCCESSFUL_COMMIT, 'GIT_PREVIOUS_SUCCESSFUL_COMMIT')
+    assertSafeGitCommit(env.GIT_COMMIT, 'GIT_COMMIT')
+    cmd = "git diff --name-only \"${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}\""
   } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
-    cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
+    assertSafeGitCommit(env.GIT_PREVIOUS_COMMIT, 'GIT_PREVIOUS_COMMIT')
+    assertSafeGitCommit(env.GIT_COMMIT, 'GIT_COMMIT')
+    cmd = "git diff --name-only \"${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}\""
   } else {
     // Fallback: only last commit
     cmd = 'git show --name-only --pretty="" HEAD'
@@ -45,7 +65,7 @@ def readMavenModulesFromRootPom() {
 }
 
 pipeline {
-  agent any
+  agent { label 'linux' }
 
   // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
   // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
@@ -73,11 +93,7 @@ pipeline {
         checkout scm
         script {
           // Ensure remote refs exist for diff calculations (PR builds, etc.)
-          if (isUnix()) {
-            sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
-          } else {
-            bat 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
-          }
+          sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
         }
       }
     }
@@ -133,11 +149,7 @@ pipeline {
       steps {
         script {
           def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
-          }
+          sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
         }
       }
     }
@@ -149,11 +161,7 @@ pipeline {
       steps {
         script {
           def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
-          }
+          sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
         }
       }
     }
@@ -165,11 +173,7 @@ pipeline {
       steps {
         script {
           def mods = env.AFFECTED_MODULES
-          if (isUnix()) {
-            sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
-          } else {
-            bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
-          }
+          sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
         }
       }
     }
