@@ -7,13 +7,16 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yas.commonlibrary.exception.ApiExceptionHandler;
 import com.yas.commonlibrary.exception.NotFoundException;
 import com.yas.media.model.Media;
@@ -36,6 +39,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -69,6 +73,8 @@ class MediaControllerTest {
     @MockitoBean
     private MediaService mediaService;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     // ==================== POST /medias ====================
 
     /**
@@ -96,15 +102,20 @@ class MediaControllerTest {
         );
 
         // When & Then
-        mockMvc.perform(multipart("/medias")
+        MvcResult result = mockMvc.perform(multipart("/medias")
                 .file(file)
                 .param("caption", "test caption")
                 .param("fileNameOverride", "photo.png")
                 .contentType(MediaType.MULTIPART_FORM_DATA))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.id").value(1L))
-            .andExpect(jsonPath("$.caption").value("test caption"))
-            .andExpect(jsonPath("$.fileName").value("photo.png"));
+            .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertAll(
+            () -> assertEquals(200, result.getResponse().getStatus()),
+            () -> assertEquals(1L, body.get("id").asLong()),
+            () -> assertEquals("test caption", body.get("caption").asText()),
+            () -> assertEquals("photo.png", body.get("fileName").asText())
+        );
     }
 
     // ==================== DELETE /medias/{id} ====================
@@ -116,8 +127,8 @@ class MediaControllerTest {
     void delete_whenMediaExists_thenReturn204() throws Exception {
         doNothing().when(mediaService).removeMedia(1L);
 
-        mockMvc.perform(delete("/medias/1"))
-            .andExpect(status().isNoContent());
+        MvcResult result = mockMvc.perform(delete("/medias/1")).andReturn();
+        assertEquals(204, result.getResponse().getStatus());
     }
 
     /**
@@ -131,8 +142,8 @@ class MediaControllerTest {
         doThrow(new NotFoundException("Media 99 is not found"))
             .when(mediaService).removeMedia(99L);
 
-        mockMvc.perform(delete("/medias/99"))
-            .andExpect(status().isNotFound());
+        MvcResult result = mockMvc.perform(delete("/medias/99")).andReturn();
+        assertEquals(404, result.getResponse().getStatus());
     }
 
     // ==================== GET /medias/{id} ====================
@@ -148,12 +159,16 @@ class MediaControllerTest {
         );
         when(mediaService.getMediaById(1L)).thenReturn(mediaVm);
 
-        mockMvc.perform(get("/medias/1"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.id").value(1L))
-            .andExpect(jsonPath("$.caption").value("caption"))
-            .andExpect(jsonPath("$.fileName").value("photo.png"))
-            .andExpect(jsonPath("$.url").value("http://example.com/medias/1/file/photo.png"));
+        MvcResult result = mockMvc.perform(get("/medias/1")).andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertAll(
+            () -> assertEquals(200, result.getResponse().getStatus()),
+            () -> assertEquals(1L, body.get("id").asLong()),
+            () -> assertEquals("caption", body.get("caption").asText()),
+            () -> assertEquals("photo.png", body.get("fileName").asText()),
+            () -> assertEquals("http://example.com/medias/1/file/photo.png", body.get("url").asText())
+        );
     }
 
     /**
@@ -166,8 +181,8 @@ class MediaControllerTest {
     void get_whenMediaNotFound_thenReturn404() throws Exception {
         when(mediaService.getMediaById(99L)).thenReturn(null);
 
-        mockMvc.perform(get("/medias/99"))
-            .andExpect(status().isNotFound());
+        MvcResult result = mockMvc.perform(get("/medias/99")).andReturn();
+        assertEquals(404, result.getResponse().getStatus());
     }
 
     // ==================== GET /medias?ids=... ====================
@@ -182,12 +197,17 @@ class MediaControllerTest {
         MediaVm vm2 = new MediaVm(2L, "cap2", "file2.jpg", "image/jpeg", "http://url/2");
         when(mediaService.getMediaByIds(anyList())).thenReturn(List.of(vm1, vm2));
 
-        mockMvc.perform(get("/medias")
+        MvcResult result = mockMvc.perform(get("/medias")
                 .param("ids", "1", "2"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()").value(2))
-            .andExpect(jsonPath("$[0].id").value(1L))
-            .andExpect(jsonPath("$[1].id").value(2L));
+            .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertAll(
+            () -> assertEquals(200, result.getResponse().getStatus()),
+            () -> assertEquals(2, body.size()),
+            () -> assertEquals(1L, body.get(0).get("id").asLong()),
+            () -> assertEquals(2L, body.get(1).get("id").asLong())
+        );
     }
 
     /**
@@ -197,9 +217,11 @@ class MediaControllerTest {
     void getByIds_whenNoMediaFound_thenReturn404() throws Exception {
         when(mediaService.getMediaByIds(anyList())).thenReturn(List.of());
 
-        mockMvc.perform(get("/medias")
+        MvcResult result = mockMvc.perform(get("/medias")
                 .param("ids", "99", "100"))
-            .andExpect(status().isNotFound());
+            .andReturn();
+
+        assertEquals(404, result.getResponse().getStatus());
     }
 
     // ==================== GET /medias/{id}/file/{fileName} ====================
@@ -217,10 +239,14 @@ class MediaControllerTest {
             .build();
         when(mediaService.getFile(anyLong(), anyString())).thenReturn(mediaDto);
 
-        mockMvc.perform(get("/medias/1/file/photo.png"))
-            .andExpect(status().isOk())
-            .andExpect(content().contentType(MediaType.IMAGE_PNG))
-            .andExpect(content().bytes(fileContent));
+        MvcResult result = mockMvc.perform(get("/medias/1/file/photo.png")).andReturn();
+
+        assertAll(
+            () -> assertEquals(200, result.getResponse().getStatus()),
+            () -> assertNotNull(result.getResponse().getContentType()),
+            () -> assertEquals(MediaType.IMAGE_PNG_VALUE, result.getResponse().getContentType()),
+            () -> assertArrayEquals(fileContent, result.getResponse().getContentAsByteArray())
+        );
     }
 
     /**
