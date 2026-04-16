@@ -127,9 +127,9 @@ pipeline {
     }
 
     stage('Install dependencies') {
-      when {
-        expression { return env.AFFECTED_MODULES?.trim() }
-      }
+    //   when {
+    //     expression { return env.AFFECTED_MODULES?.trim() }
+    //   }
       steps {
         script {
           def mods = env.AFFECTED_MODULES
