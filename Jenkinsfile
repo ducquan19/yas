@@ -47,6 +47,10 @@ def readMavenModulesFromRootPom() {
 pipeline {
   agent any
 
+  tools {
+    maven 'maven3' // Name of Maven installation configured in Jenkins global tools
+  }
+
   // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
   // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
   options {
