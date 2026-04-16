@@ -38,21 +38,9 @@ def computeChangedFiles() {
 
 def readMavenModulesFromRootPom() {
   def pom = readFile('pom.xml')
+  def matcher = (pom =~ /<module>([^<]+)<\/module>/)
   def modules = []
-
-  try {
-    // Prefer XML parsing for reliability; fallback to regex if needed.
-    def xml = new XmlSlurper(false, false).parseText(pom)
-    modules = xml.modules.module.collect { it.text().trim() }.findAll { it }
-  } catch (ignored) {
-    // Ignore and fallback to regex below.
-  }
-
-  if (!modules) {
-    def matcher = (pom =~ /<module>([^<]+)<\/module>/)
-    matcher.each { m -> modules << m[1].trim() }
-  }
-
+  matcher.each { m -> modules << m[1].trim() }
   return modules.unique()
 }
 
@@ -145,12 +133,16 @@ pipeline {
             env.MVN_MAKE_FLAGS = '-am -amd'
           }
 
-          env.AFFECTED_MODULES = affected.join(',')
+          def affectedModulesCsv = affected.join(',')
+          env.AFFECTED_MODULES = affectedModulesCsv
+          // Persist to workspace so following stages can read reliably.
+          writeFile file: '.jenkins_affected_modules', text: affectedModulesCsv
+          echo "AFFECTED_MODULES env after set: ${env.AFFECTED_MODULES}"
 
-          if (env.AFFECTED_MODULES?.trim()) {
-            currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${env.AFFECTED_MODULES}"
+          if (affectedModulesCsv?.trim()) {
+            currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${affectedModulesCsv}"
             echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
-            echo "Affected Maven modules: ${env.AFFECTED_MODULES}"
+            echo "Affected Maven modules: ${affectedModulesCsv}"
           } else {
             currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
             echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
@@ -163,8 +155,8 @@ pipeline {
     stage('Install dependencies') {
       steps {
         script {
-          if (env.AFFECTED_MODULES?.trim()) {
-            def mods = env.AFFECTED_MODULES
+          def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
+          if (mods) {
             if (isUnix()) {
               sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
             } else {
@@ -185,8 +177,8 @@ pipeline {
     stage('Test (upload results + coverage)') {
       steps {
         script {
-          if (env.AFFECTED_MODULES?.trim()) {
-            def mods = env.AFFECTED_MODULES
+          def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
+          if (mods) {
             if (isUnix()) {
               sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
             } else {
@@ -202,8 +194,8 @@ pipeline {
     stage('Build') {
       steps {
         script {
-          if (env.AFFECTED_MODULES?.trim()) {
-            def mods = env.AFFECTED_MODULES
+          def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
+          if (mods) {
             if (isUnix()) {
               sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
             } else {
