@@ -170,6 +170,7 @@ class MediaControllerTest {
             () -> assertEquals("http://example.com/medias/1/file/photo.png", body.get("url").asText())
         );
     }
+    
 
     /**
      * Verifies that retrieving a non-existent media by ID returns 404 Not Found.

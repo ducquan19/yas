@@ -58,6 +58,13 @@ def readAffectedModulesCsv() {
   return fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
 }
 
+def readAffectedModulesList() {
+  return readAffectedModulesCsv()
+    .split(',')
+    .collect { it.trim() }
+    .findAll { it }
+}
+
 pipeline {
   agent any
 
@@ -196,6 +203,83 @@ pipeline {
               [threshold: 70.0, metric: 'INSTRUCTION', baseline: 'PROJECT', criticality: 'UNSTABLE']
             ]
           )
+        }
+      }
+    }
+
+    stage('Gitleaks Scan') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' }
+      }
+      steps {
+        script {
+          if (isUnix()) {
+            sh '''
+              if command -v gitleaks >/dev/null 2>&1; then
+                gitleaks detect --source . --config gitleaks.toml --no-git --verbose
+              else
+                docker run --rm -v "$PWD:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose
+              fi
+            '''
+          } else {
+            bat '''
+              where gitleaks >nul 2>nul
+              if %ERRORLEVEL% EQU 0 (
+                gitleaks detect --source . --config gitleaks.toml --no-git --verbose
+              ) else (
+                docker run --rm -v "%CD%:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose
+              )
+            '''
+          }
+        }
+      }
+    }
+
+    stage('SonarQube Scan') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' }
+      }
+      steps {
+        script {
+          def mods = readAffectedModulesCsv()
+          if (!(env.SONAR_TOKEN ?: '').trim()) {
+            error('SONAR_TOKEN is required for SonarQube scan. Configure it in Jenkins credentials/environment.')
+          }
+          runCmd("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.token=${env.SONAR_TOKEN}")
+        }
+      }
+    }
+
+    stage('Snyk Scan') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' && (env.SNYK_TOKEN ?: '').trim() }
+      }
+      steps {
+        script {
+          def moduleList = readAffectedModulesList()
+
+          if (isUnix()) {
+            sh '''
+              if ! command -v snyk >/dev/null 2>&1; then
+                npm install -g snyk
+              fi
+            '''
+          } else {
+            bat '''
+              where snyk >nul 2>nul
+              if %ERRORLEVEL% NEQ 0 npm install -g snyk
+            '''
+          }
+
+          if (isUnix()) {
+            sh "snyk auth ${env.SNYK_TOKEN}"
+          } else {
+            bat "snyk auth ${env.SNYK_TOKEN}"
+          }
+
+          moduleList.each { module ->
+            runCmd("snyk test --file=${module}/pom.xml --package-manager=maven")
+          }
         }
       }
     }
