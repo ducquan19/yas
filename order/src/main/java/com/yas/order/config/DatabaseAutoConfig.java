@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 
+
 @Configuration
 @EnableJpaRepositories("com.yas.order.repository")
 @EntityScan("com.yas.order.model")
