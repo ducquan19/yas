@@ -132,9 +132,9 @@ pipeline {
             echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
             echo 'No impacted Maven module. Test/Coverage/Build stages will be skipped.'
           } else {
-            currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${env.AFFECTED_MODULES}"
+            currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${affectedModulesCsv}"
             echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
-            echo "Affected modules: ${env.AFFECTED_MODULES}"
+            echo "Affected modules: ${affectedModulesCsv}"
           }
         }
       }
@@ -170,13 +170,24 @@ pipeline {
         expression { env.SKIP_PIPELINE != 'true' }
       }
       steps {
-        recordCoverage(
-          tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
-          qualityGates: [
-            [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', failure: true],
-            [threshold: 70.0, metric: 'BRANCH', baseline: 'PROJECT', failure: true]
-          ]
-        )
+        script {
+          def mods = readAffectedModulesCsv()
+          def coverageTools = mods
+            .split(',')
+            .collect { it.trim() }
+            .findAll { it }
+            .collect { module ->
+              [parser: 'JACOCO', pattern: "${module}/target/site/jacoco/jacoco.xml"]
+            }
+
+          recordCoverage(
+            tools: coverageTools,
+            sourceCodeRetention: 'NEVER',
+            qualityGates: [
+              [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']
+            ]
+          )
+        }
       }
     }
 
