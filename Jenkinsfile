@@ -13,6 +13,13 @@ def runCapture(String cmd) {
   return bat(script: cmd, returnStdout: true).trim()
 }
 
+def runStatus(String cmd) {
+  if (isUnix()) {
+    return sh(script: cmd, returnStatus: true)
+  }
+  return bat(script: cmd, returnStatus: true)
+}
+
 def computeChangedFiles() {
   def cmd
 
@@ -147,13 +154,13 @@ pipeline {
       steps {
         script {
           def mods = readAffectedModulesCsv()
-          catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-            runCmd("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify")
-          }
-
-          // Always try to generate jacoco.xml for coverage publishing.
-          catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-            runCmd("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests jacoco:report")
+          int verifyStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify")
+          if (verifyStatus != 0) {
+            currentBuild.result = 'FAILURE'
+            echo 'verify failed; running jacoco:report fallback to publish coverage artifacts.'
+            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+              runCmd("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests jacoco:report")
+            }
           }
         }
       }
@@ -184,7 +191,9 @@ pipeline {
             tools: coverageTools,
             sourceCodeRetention: 'NEVER',
             qualityGates: [
-              [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']
+              [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE'],
+              [threshold: 50.0, metric: 'BRANCH', baseline: 'PROJECT', criticality: 'FAILURE'],
+              [threshold: 70.0, metric: 'INSTRUCTION', baseline: 'PROJECT', criticality: 'UNSTABLE']
             ]
           )
         }
