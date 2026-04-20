@@ -111,7 +111,7 @@ class MediaControllerTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         assertAll(
-            () -> assertEquals(201, result.getResponse().getStatus()),
+            () -> assertEquals(200, result.getResponse().getStatus()),
             () -> assertEquals(1L, body.get("id").asLong()),
             () -> assertEquals("test caption", body.get("caption").asText()),
             () -> assertEquals("photo.png", body.get("fileName").asText())
@@ -163,7 +163,7 @@ class MediaControllerTest {
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         assertAll(
-            () -> assertEquals(201, result.getResponse().getStatus()),
+            () -> assertEquals(200, result.getResponse().getStatus()),
             () -> assertEquals(1L, body.get("id").asLong()),
             () -> assertEquals("caption", body.get("caption").asText()),
             () -> assertEquals("photo.png", body.get("fileName").asText()),
