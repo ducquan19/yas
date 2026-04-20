@@ -38,6 +38,7 @@ class FileSystemRepositoryTest {
     public void setUp() {
         MockitoAnnotations.openMocks(this);
     }
+    
 
     @AfterEach
     void tearDown() throws IOException {
@@ -55,7 +56,7 @@ class FileSystemRepositoryTest {
                 });
         }
     }
-    
+
 
     @Test
     void testPersistFile_whenDirectoryNotExist_thenThrowsException() {

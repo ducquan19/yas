@@ -122,9 +122,10 @@ pipeline {
             env.MVN_MAKE_FLAGS = '-am -amd'
           }
 
-          env.AFFECTED_MODULES = affectedModules.join(',')
+          def affectedModulesCsv = affectedModules ? affectedModules.join(',') : ''
+          env.AFFECTED_MODULES = affectedModulesCsv
           env.SKIP_PIPELINE = env.AFFECTED_MODULES?.trim() ? 'false' : 'true'
-          writeFile file: '.jenkins_affected_modules', text: env.AFFECTED_MODULES
+          writeFile file: '.jenkins_affected_modules', text: (affectedModulesCsv ?: '')
 
           if (env.SKIP_PIPELINE == 'true') {
             currentBuild.description = "${env.BRANCH_NAME ?: ''} | no Maven service changes"
