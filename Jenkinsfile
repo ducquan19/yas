@@ -278,7 +278,10 @@ pipeline {
               error("Missing <sonar.projectKey> in ${module}/pom.xml")
             }
 
-            runCmd("mvn ${env.MVN_ARGS} -pl ${module} ${env.MVN_MAKE_FLAGS} org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
+            int sonarStatus = runStatus("mvn ${env.MVN_ARGS} -f ${module}/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
+            if (sonarStatus != 0) {
+              unstable("Sonar scan failed for module ${module} (projectKey=${sonarProjectKey}). Continue to Snyk scan.")
+            }
           }
         }
       }
