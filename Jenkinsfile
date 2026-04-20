@@ -108,6 +108,7 @@ pipeline {
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
     SONAR_TOKEN = credentials('sonar-token')
+    SNYK_TOKEN = credentials('snyk-token')
   }
 
   stages {
@@ -278,6 +279,13 @@ pipeline {
               error("Missing <sonar.projectKey> in ${module}/pom.xml")
             }
 
+            // Ensure inter-module dependencies are available in local Maven repo for standalone module scan.
+            int installStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
+            if (installStatus != 0) {
+              unstable("Preparation for Sonar failed for module ${module} (install dependencies). Continue to Snyk scan.")
+              return
+            }
+
             int sonarStatus = runStatus("mvn ${env.MVN_ARGS} -f ${module}/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
             if (sonarStatus != 0) {
               unstable("Sonar scan failed for module ${module} (projectKey=${sonarProjectKey}). Continue to Snyk scan.")
@@ -297,31 +305,25 @@ pipeline {
 
           try {
             withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+              def snykCmd = 'snyk'
               if (isUnix()) {
-                sh '''
-                  if ! command -v snyk >/dev/null 2>&1; then
-                    npm install -g snyk
-                  fi
-                '''
+                if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
+                  snykCmd = 'npx --yes snyk@latest'
+                }
+                sh "${snykCmd} auth ${env.SNYK_TOKEN}"
               } else {
-                bat '''
-                  where snyk >nul 2>nul
-                  if %ERRORLEVEL% NEQ 0 npm install -g snyk
-                '''
-              }
-
-              if (isUnix()) {
-                sh "snyk auth ${env.SNYK_TOKEN}"
-              } else {
-                bat "snyk auth ${env.SNYK_TOKEN}"
+                if (runStatus('where snyk >nul 2>nul') != 0) {
+                  snykCmd = 'npx --yes snyk@latest'
+                }
+                bat "${snykCmd} auth ${env.SNYK_TOKEN}"
               }
 
               moduleList.each { module ->
-                runCmd("snyk test --file=${module}/pom.xml --package-manager=maven")
+                runCmd("${snykCmd} test --file=${module}/pom.xml --package-manager=maven")
               }
             }
           } catch (err) {
-            unstable("Skipping Snyk scan: credential 'snyk-token' must be Secret text for current CLI flow. Error: ${err.message}")
+            unstable("Snyk scan failed but pipeline continues: ${err.message}")
           }
         }
       }
