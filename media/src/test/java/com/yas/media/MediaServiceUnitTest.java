@@ -195,6 +195,7 @@ class MediaServiceUnitTest {
             "image/png",
             pngFileContent
         );
+        
         MediaPostVm mediaPostVm = new MediaPostVm("media", multipartFile, "");
 
         when(mediaRepository.save(any(Media.class))).thenAnswer(invocation -> invocation.getArgument(0));
