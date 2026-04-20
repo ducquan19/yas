@@ -93,6 +93,7 @@ pipeline {
     REBUILD_ALL_ON_JENKINSFILE = 'false'
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
+    SONAR_TOKEN = credentials('sonar-token')
   }
 
   stages {
