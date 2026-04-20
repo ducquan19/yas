@@ -48,6 +48,7 @@ pipeline {
   agent any
 
   tools {
+    jdk 'jdk25'
     maven 'maven3' // Name of Maven installation configured in Jenkins global tools
   }
 
@@ -82,6 +83,20 @@ pipeline {
             sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
           } else {
             bat 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
+          }
+        }
+      }
+    }
+
+    stage('Check Java & Maven version') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'java -version'
+            sh 'mvn -v'
+          } else {
+            bat 'java -version'
+            bat 'mvn -v'
           }
         }
       }
