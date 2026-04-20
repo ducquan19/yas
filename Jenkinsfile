@@ -92,6 +92,7 @@ pipeline {
     MVN_MAKE_FLAGS = '-am'
     REBUILD_ALL_ON_JENKINSFILE = 'false'
     SKIP_PIPELINE = 'false'
+    GITLEAKS_FAIL_ON_FINDINGS = 'false'
   }
 
   stages {
@@ -213,23 +214,33 @@ pipeline {
       }
       steps {
         script {
+          int gitleaksStatus
           if (isUnix()) {
-            sh '''
+            gitleaksStatus = runStatus('''
               if command -v gitleaks >/dev/null 2>&1; then
-                gitleaks detect --source . --config gitleaks.toml --no-git --verbose
+                gitleaks detect --source . --config gitleaks.toml --no-git --verbose --report-format sarif --report-path gitleaks-report.sarif
               else
-                docker run --rm -v "$PWD:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose
+                docker run --rm -v "$PWD:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose --report-format sarif --report-path /work/gitleaks-report.sarif
               fi
-            '''
+            ''')
           } else {
-            bat '''
+            gitleaksStatus = runStatus('''
               where gitleaks >nul 2>nul
               if %ERRORLEVEL% EQU 0 (
-                gitleaks detect --source . --config gitleaks.toml --no-git --verbose
+                gitleaks detect --source . --config gitleaks.toml --no-git --verbose --report-format sarif --report-path gitleaks-report.sarif
               ) else (
-                docker run --rm -v "%CD%:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose
+                docker run --rm -v "%CD%:/work" -w /work zricethezav/gitleaks:v8.18.4 detect --source . --config /work/gitleaks.toml --no-git --verbose --report-format sarif --report-path /work/gitleaks-report.sarif
               )
-            '''
+            ''')
+          }
+
+          if (gitleaksStatus != 0) {
+            def msg = 'Gitleaks found potential secrets. Review gitleaks-report.sarif and rotate/revoke exposed credentials if needed.'
+            if (env.GITLEAKS_FAIL_ON_FINDINGS?.toBoolean()) {
+              error(msg)
+            } else {
+              unstable(msg)
+            }
           }
         }
       }
@@ -303,6 +314,8 @@ pipeline {
     always {
       archiveArtifacts allowEmptyArchive: true,
                        artifacts: '**/target/site/jacoco/**,**/target/jacoco.exec'
+      archiveArtifacts allowEmptyArchive: true,
+                       artifacts: 'gitleaks-report.sarif'
       archiveArtifacts allowEmptyArchive: true,
                        artifacts: '**/target/*.jar,**/target/*.war'
     }
