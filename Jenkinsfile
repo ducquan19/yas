@@ -65,6 +65,20 @@ def readAffectedModulesList() {
     .findAll { it }
 }
 
+def readSonarProjectKeyFromModulePom(String module) {
+  def pomPath = "${module}/pom.xml"
+  if (!fileExists(pomPath)) {
+    return ''
+  }
+
+  def pom = readFile(pomPath)
+  def matcher = (pom =~ /<sonar\.projectKey>([^<]+)<\/sonar\.projectKey>/)
+  if (matcher.find()) {
+    return matcher.group(1).trim()
+  }
+  return ''
+}
+
 pipeline {
   agent any
 
@@ -94,6 +108,7 @@ pipeline {
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
     SONAR_TOKEN = credentials('sonar-token')
+    SNYK_TOKEN = credentials('snyk-token')
   }
 
   stages {
@@ -253,11 +268,19 @@ pipeline {
       }
       steps {
         script {
-          def mods = readAffectedModulesCsv()
           if (!(env.SONAR_TOKEN ?: '').trim()) {
             error('SONAR_TOKEN is required for SonarQube scan. Configure it in Jenkins credentials/environment.')
           }
-          runCmd("mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.token=${env.SONAR_TOKEN}")
+
+          def moduleList = readAffectedModulesList()
+          moduleList.each { module ->
+            def sonarProjectKey = readSonarProjectKeyFromModulePom(module)
+            if (!sonarProjectKey) {
+              error("Missing <sonar.projectKey> in ${module}/pom.xml")
+            }
+
+            runCmd("mvn ${env.MVN_ARGS} -pl ${module} ${env.MVN_MAKE_FLAGS} org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
+          }
         }
       }
     }
