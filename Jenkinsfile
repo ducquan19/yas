@@ -44,6 +44,30 @@ def readMavenModulesFromRootPom() {
   return modules.unique()
 }
 
+def readLineCoveragePercent(String module) {
+  def jacocoXml = "${module}/target/site/jacoco/jacoco.xml"
+  if (!fileExists(jacocoXml)) {
+    return null
+  }
+
+  def xmlText = readFile(jacocoXml)
+  def xml = new XmlSlurper().parseText(xmlText)
+  def lineCounter = xml.counter.find { it.@type.toString() == 'LINE' }
+  if (!lineCounter) {
+    return null
+  }
+
+  double covered = lineCounter.@covered.toString() as double
+  double missed = lineCounter.@missed.toString() as double
+  double total = covered + missed
+
+  if (total <= 0d) {
+    return 0d
+  }
+
+  return (covered * 100d) / total
+}
+
 pipeline {
   agent any
 
@@ -58,6 +82,7 @@ pipeline {
     timestamps()
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
+    overrideIndexTriggers(true)
     buildDiscarder(logRotator(numToKeepStr: '30'))
   }
 
@@ -71,6 +96,8 @@ pipeline {
     AFFECTED_MODULES = ''
     MVN_MAKE_FLAGS = '-am'
     REBUILD_ALL_ON_JENKINSFILE = 'false'
+    SKIP_PIPELINE = 'false'
+    MIN_LINE_COVERAGE = '70'
   }
 
   stages {
@@ -154,6 +181,7 @@ pipeline {
 
           def affectedModulesCsv = affected.join(',')
           env.AFFECTED_MODULES = affectedModulesCsv
+          env.SKIP_PIPELINE = affectedModulesCsv?.trim() ? 'false' : 'true'
           // Persist to workspace so following stages can read reliably.
           writeFile file: '.jenkins_affected_modules', text: affectedModulesCsv
           echo "AFFECTED_MODULES env after set: ${env.AFFECTED_MODULES}"
@@ -172,6 +200,9 @@ pipeline {
     }
 
     stage('Install dependencies') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
@@ -194,14 +225,19 @@ pipeline {
     }
 
     stage('Test (upload results + coverage)') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
           if (mods) {
-            if (isUnix()) {
-              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
-            } else {
-              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+              if (isUnix()) {
+                sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+              } else {
+                bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+              }
             }
           } else {
             echo 'No affected module detected; skipping tests (still running stage).'
@@ -210,7 +246,49 @@ pipeline {
       }
     }
 
+    stage('Coverage gate (line > 70%)') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' }
+      }
+      steps {
+        script {
+          def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
+          if (!mods) {
+            echo 'No affected module detected; skipping coverage gate.'
+            return
+          }
+
+          double threshold = (env.MIN_LINE_COVERAGE ?: '70') as double
+          def modules = mods.split(',').collect { it.trim() }.findAll { it }
+          def coverageSummary = []
+          def gateFailures = []
+
+          modules.each { module ->
+            def lineCoverage = readLineCoveragePercent(module)
+            if (lineCoverage == null) {
+              gateFailures << "${module}: missing Jacoco LINE coverage report (${module}/target/site/jacoco/jacoco.xml)"
+              return
+            }
+
+            def rounded = Math.round(lineCoverage * 100d) / 100d
+            coverageSummary << "${module}=${rounded}%"
+            if (lineCoverage < threshold) {
+              gateFailures << "${module}: ${rounded}% < ${threshold}%"
+            }
+          }
+
+          echo "Line coverage summary: ${coverageSummary.join(', ')}"
+          if (gateFailures) {
+            error("Coverage gate failed (required line coverage >= ${threshold}%): ${gateFailures.join(' | ')}")
+          }
+        }
+      }
+    }
+
     stage('Build') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' && currentBuild.currentResult != 'FAILURE' }
+      }
       steps {
         script {
           def mods = fileExists('.jenkins_affected_modules') ? readFile('.jenkins_affected_modules').trim() : (env.AFFECTED_MODULES ?: '').trim()
