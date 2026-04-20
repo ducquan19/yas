@@ -239,6 +239,15 @@ pipeline {
                 bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
               }
             }
+
+            // Force JaCoCo XML generation even when unit/integration tests failed.
+            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+              if (isUnix()) {
+                sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests jacoco:report"
+              } else {
+                bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests jacoco:report"
+              }
+            }
           } else {
             echo 'No affected module detected; skipping tests (still running stage).'
           }
