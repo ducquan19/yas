@@ -121,7 +121,6 @@ pipeline {
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
     ENABLE_SONAR_SCAN = 'false'
-    SNYK_ORG = 'tbnguyen274'
   }
 
   stages {
@@ -318,11 +317,9 @@ pipeline {
         script {
           def moduleList = readAffectedModulesList()
           def snykOrgArg = (env.SNYK_ORG ?: '').trim() ? " --org=${env.SNYK_ORG.trim()}" : ''
+          
           def rootRevision = readRootRevisionFromPom()
-          def snykMavenOpts = (env.MAVEN_OPTS ?: '').trim()
-          if (rootRevision) {
-            snykMavenOpts = "${snykMavenOpts} -Drevision=${rootRevision}".trim()
-          }
+          def snykMavenPassThrough = rootRevision ? " -- -Drevision=${rootRevision}" : ""
 
           try {
             withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
@@ -350,23 +347,22 @@ pipeline {
                     runStatus('chmod +x mvnw')
                   }
 
-                  withEnv(["MAVEN_OPTS=${snykMavenOpts}"]) {
-                    boolean moduleScanPassed = true
-                    int snykStatus = runStatus("${snykCmd} test --file=pom.xml --package-manager=maven${snykOrgArg}")
-                    if (snykStatus != 0) {
-                      echo "Snyk scan failed for ${module}/pom.xml with exit code ${snykStatus}. Retrying in debug mode (-d)."
-                      int debugStatus = runStatus("${snykCmd} test -d --file=pom.xml --package-manager=maven${snykOrgArg}")
-                      if (debugStatus != 0) {
-                        moduleScanPassed = false
-                        unstable("Snyk scan failed for ${module}/pom.xml (exit=${debugStatus}). Check debug logs above.")
-                      }
+                  boolean moduleScanPassed = true
+                  int snykStatus = runStatus("${snykCmd} test --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                  
+                  if (snykStatus != 0) {
+                    echo "Snyk scan failed for ${module}/pom.xml with exit code ${snykStatus}. Retrying in debug mode (-d)."
+                    int debugStatus = runStatus("${snykCmd} test -d --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                    if (debugStatus != 0) {
+                      moduleScanPassed = false
+                      unstable("Snyk scan failed for ${module}/pom.xml (exit=${debugStatus}). Check debug logs above.")
                     }
+                  }
 
-                    if (moduleScanPassed) {
-                      int monitorStatus = runStatus("${snykCmd} monitor --file=pom.xml --package-manager=maven${snykOrgArg}")
-                      if (monitorStatus != 0) {
-                        unstable("Snyk monitor failed for ${module}/pom.xml (exit=${monitorStatus}).")
-                      }
+                  if (moduleScanPassed) {
+                    int monitorStatus = runStatus("${snykCmd} monitor --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                    if (monitorStatus != 0) {
+                      unstable("Snyk monitor failed for ${module}/pom.xml (exit=${monitorStatus}).")
                     }
                   }
                 }
