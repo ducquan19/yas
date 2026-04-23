@@ -314,19 +314,74 @@ pipeline {
       }
     }
 
-    stage('Snyk Security Scan') {
-        // when {
-        //     expression { env.AFFECTED_MODULES?.trim() }
-        // }
-        // Run the Snyk security scan for the affected modules
-        steps {
-            withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-                sh '''
-                    snyk auth $SNYK_TOKEN
-                    snyk test
-                '''
+    stage('Snyk Scan') {
+      when {
+        expression { env.SKIP_PIPELINE != 'true' && env.ENABLE_SNYK_SCAN?.toBoolean() }
+      }
+      steps {
+        script {
+          def moduleList = readAffectedModulesList()
+          if (!moduleList || moduleList.isEmpty()) {
+            echo "No affected modules → skip Snyk scan"
+            return
+          }
+
+          if (!(env.SNYK_INSTALLATION ?: '').trim()) {
+            unstable('SNYK_INSTALLATION is required for Jenkins Snyk plugin. Configure Jenkins Tool and set env.SNYK_INSTALLATION.')
+            return
+          }
+
+          if (!(env.SNYK_TOKEN_ID ?: '').trim()) {
+            unstable('SNYK_TOKEN_ID is required for Jenkins Snyk plugin. Configure Snyk API Token credential and set env.SNYK_TOKEN_ID.')
+            return
+          }
+
+          def rootRevision = readRootRevisionFromPom()
+          def additionalArgs = '--command=mvn --debug'
+
+          moduleList.each { module ->
+            echo "=== Snyk scan for module: ${module} ==="
+
+            // Some Jenkins Linux agents fail with exit -13 when module mvnw lacks execute bit.
+            if (isUnix() && fileExists("${module}/mvnw")) {
+              int chmodStatus = runStatus("chmod +x ${module}/mvnw")
+              if (chmodStatus != 0) {
+                echo "Warning: chmod +x ${module}/mvnw failed. Continue with --command=mvn fallback."
+              }
             }
+
+            // Ensure inter-module SNAPSHOT dependencies are available before plugin scan.
+            int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
+            if (prepStatus != 0) {
+              unstable("Snyk prep failed for ${module}")
+              return
+            }
+
+            def snykStepArgs = [
+              snykInstallation: env.SNYK_INSTALLATION,
+              snykTokenId: env.SNYK_TOKEN_ID,
+              targetFile: "${module}/pom.xml",
+              monitorProjectOnBuild: true,
+              failOnIssues: false,
+              failOnError: true
+            ]
+
+            if ((env.SNYK_ORG ?: '').trim()) {
+              snykStepArgs.organisation = env.SNYK_ORG.trim()
+            }
+            if (additionalArgs) {
+              snykStepArgs.additionalArguments = additionalArgs
+            }
+
+            def mavenConfig = rootRevision ? "-U -Drevision=${rootRevision}" : '-U'
+            withEnv(["MAVEN_CONFIG=${mavenConfig}"]) {
+              catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                snykSecurity(snykStepArgs)
+              }
+            }
+          }
         }
+      }
     }
 
     stage('Build') {
