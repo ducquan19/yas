@@ -240,21 +240,25 @@ pipeline {
         }
 
         stage('SonarQube Analysis & Quality Gate') {
-            // when {
-            //     expression { env.AFFECTED_MODULES?.trim() }
-            // }
             steps {
-                withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
-                    sh '''
-                        mvn ${MVN_ARGS} \
-                            -pl ${AFFECTED_MODULES} \
-                            ${MVN_MAKE_FLAGS} \
-                            sonar:sonar \
-                            -Dsonar.projectKey=yas-project\
-                            -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.login=$SONAR_TOKEN \
-                            -Dsonar.qualitygate.wait=true
-                    '''
+                script {
+                    def mvnFlags = env.MVN_MAKE_FLAGS ?: ""
+
+                    if (!fileExists('pom.xml')) {
+                        error("No Maven project found in workspace")
+                    }
+
+                    echo "Running SonarQube scan with flags: ${mvnFlags}"
+
+                    withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
+                        sh """
+                            mvn ${MVN_ARGS} ${mvnFlags} sonar:sonar \
+                                -Dsonar.projectKey=yas-project \
+                                -Dsonar.host.url=http://localhost:9000 \
+                                -Dsonar.login=$SONAR_TOKEN \
+                                -Dsonar.qualitygate.wait=true
+                        """
+                    }
                 }
             }
         }
