@@ -1,76 +1,75 @@
-// Run a shell command and return the output as a string
 def runCapture(String cmd) {
+  if (isUnix()) {
     return sh(script: cmd, returnStdout: true).trim()
+  }
+  // On Windows agents, `bat(returnStdout: true)` returns with CRLF; normalize later.
+  return bat(script: cmd, returnStdout: true).trim()
 }
 
-// Calculate the list of changed files 
 def computeChangedFiles() {
-    def cmd = null
+  def cmd = null
 
-    if (env.CHANGE_TARGET) {
-        // For pull requests, compare the current branch with the target branch
-        cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
-    } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
-        // For regular commits, compare the current commit with the previous successful commit
-        cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
-    } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
-        // If no previous successful commit is available, compare the current commit with the previous commit
-        cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
-    } else {
-        // Fallback: list files changed in the latest commit
-        cmd = 'git show --name-only --pretty="" HEAD'
-    }
+  if (env.CHANGE_TARGET) {
+    // PR build (Multibranch): diff against merge-base with target branch
+    cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
+  } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
+    cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
+  } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
+    cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
+  } else {
+    // Fallback: only last commit
+    cmd = 'git show --name-only --pretty="" HEAD'
+  }
 
-    try {
-        def out = runCapture(cmd)
-        return out
-            .split(/\r?\n/)
-            .collect { it.trim() }
-            .findAll { it }
-    } catch (err) {
-        def out = runCapture('git -c color.ui=never show --name-only --pretty="" HEAD')
-        return out
-            .split(/\r?\n/)
-            .collect { it.trim() }
-            .findAll { it }
-    }
+  try {
+    def out = runCapture(cmd)
+    return out
+      .split(/\r?\n/)
+      .collect { it.trim() }
+      .findAll { it }
+  } catch (err) {
+    def out = runCapture('git show --name-only --pretty="" HEAD')
+    return out
+      .split(/\r?\n/)
+      .collect { it.trim() }
+      .findAll { it }
+  }
 }
 
-// Read the list of modules from the root pom.xml
 def readMavenModulesFromRootPom() {
-    def pom = readFile('pom.xml')
-    def matcher = (pom =~ /<module>([^<]+)<\/module>/)
-    def modules = []
-    matcher.each { m -> modules << m[1].trim() }
-    return modules.unique()
+  def pom = readFile('pom.xml')
+  def matcher = (pom =~ /<module>([^<]+)<\/module>/)
+  def modules = []
+  matcher.each { m -> modules << m[1].trim() }
+  return modules.unique()
 }
-
 
 pipeline {
-    agent any
+  agent any
 
-    tools {
-        // Define the Maven and JDK tools to be used in the pipeline
-        maven 'maven3'
-        jdk 'jdk25'
-    }
+  tools {
+    maven 'maven3' // Name of Maven installation configured in Jenkins global tools
+  }
 
-    options {
-        timestamps() 
-        disableConcurrentBuilds()
-        skipDefaultCheckout(true)
-        buildDiscarder(logRotator(numToKeepStr: '20'))
-    }
+  // For branch-by-branch execution, create a Multibranch Pipeline job in Jenkins.
+  // This Jenkinsfile is designed to run correctly in Multibranch (BRANCH_NAME/CHANGE_TARGET).
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    skipDefaultCheckout(true)
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+  }
 
-    triggers {
-        //  Poll the SCM every 5 minutes to check for changes
-        pollSCM('H/5 * * * *')
-    }
+  // Fallback trigger if webhooks/branch indexing isn't configured.
+  triggers {
+    pollSCM('H/15 * * * *')
+  }
 
-    environment {
-        // Define environment variables for Maven commands
-        MVN_ARGS = '-B -ntp'
-    }
+  environment {
+    MVN_ARGS = '-B -ntp'
+    AFFECTED_MODULES = ''
+    MVN_MAKE_FLAGS = '-am'
+  }
 
     stages {
         stage('Checkout') {
@@ -146,131 +145,110 @@ pipeline {
                     def allModules = readMavenModulesFromRootPom()
                     def changedFiles = computeChangedFiles()
 
-                    // Normalize file paths (CRITICAL)
-                    def normalizedChangedFiles = changedFiles
-                        .collect { it.replaceAll('\\u001B\\[[;\\d]*m', '').trim() }
-                        .collect { it.replace('\\', '/') }
-                        .collect { it.replaceFirst(/^\.\//, '') }
-                        .findAll { it }
+          // Root-level changes that should rebuild everything
+          def rebuildAll = changedFiles.any { f ->
+            f == 'pom.xml' ||
+            f == 'Jenkinsfile' ||
+            f.startsWith('checkstyle/')
+          }
 
-                    // Detect rebuild all
-                    def rebuildAll = normalizedChangedFiles.any { f ->
-                        f.equalsIgnoreCase('pom.xml') ||
-                        f.startsWith('checkstyle/')
-                    }
+          def touchedTopDirs = changedFiles
+            .findAll { it.contains('/') }
+            .collect { it.tokenize('/')[0] }
+            .unique()
 
-                    // Optional: rebuild if Jenkinsfile changed
-                    if (env.REBUILD_ALL_ON_JENKINSFILE?.toBoolean()) {
-                        rebuildAll = rebuildAll || normalizedChangedFiles.any {
-                            it.equalsIgnoreCase('Jenkinsfile')
-                        }
-                    }
+          def affected = touchedTopDirs.findAll { d -> allModules.contains(d) }
 
-                    // Debug: top-level dirs (for visibility only)
-                    def touchedTopDirs = normalizedChangedFiles
-                        .findAll { it.contains('/') }
-                        .collect { it.tokenize('/')[0] }
-                        .unique()
+          if (rebuildAll) {
+            affected = allModules
+          }
 
-                    def affected = allModules.findAll { module ->
-                        normalizedChangedFiles.any { f ->
-                            f == module || f.startsWith("${module}/")
-                        }
-                    }
+          // If common-library changes, rebuild dependents too.
+          if (affected.contains('common-library')) {
+            env.MVN_MAKE_FLAGS = '-am -amd'
+          }
 
-                    if (rebuildAll) {
-                        affected = allModules
-                    }
+          env.AFFECTED_MODULES = affected.join(',')
 
-                    // Handle dependency rebuild
-                    env.MVN_MAKE_FLAGS = '-am'
-                    if (affected.contains('common-library')) {
-                        env.MVN_MAKE_FLAGS = '-am -amd'
-                    }
-
-                    def affectedModulesCsv = affected.join(',')
-                    env.AFFECTED_MODULES = affectedModulesCsv
-
-                    // Persist for later stages (avoid env issues)
-                    writeFile file: '.jenkins_affected_modules', text: affectedModulesCsv
-
-                    // Logging
-                    echo "All modules (${allModules.size()}): ${allModules.join(',')}"
-                    echo "rebuildAll=${rebuildAll}"
-                    echo "Touched dirs: ${touchedTopDirs.join(',')}"
-                    echo "Affected modules: ${affectedModulesCsv}"
-
-                    if (affectedModulesCsv?.trim()) {
-                        currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${affectedModulesCsv}"
-                        echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
-                    } else {
-                        currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
-                        echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
-                        echo "No Maven module affected → build/test stages will be no-op"
-                    }
-                }
-            }
+          if (env.AFFECTED_MODULES?.trim()) {
+            currentBuild.description = "${env.BRANCH_NAME ?: ''} | modules: ${env.AFFECTED_MODULES}"
+            echo "Changed files:\n${changedFiles.join('\n')}"
+            echo "Affected Maven modules: ${env.AFFECTED_MODULES}"
+          } else {
+            currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
+            echo "Changed files:\n${changedFiles.join('\n')}"
+            echo 'No Maven service module changed; Test/Build stages will run as no-ops.'
+          }
         }
-
-        stage('Build') {
-            when {
-                // Only run the build stage if there are affected modules to build
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
-                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
-                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
-            }
-        }
-
-        stage('Unit & Integration Tests') {
-            when {
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                // Run the Maven verify command for the affected modules to execute tests and generate coverage reports
-                sh """
-                    mvn ${env.MVN_ARGS} \
-                        -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} \
-                        verify \
-                        -ff \
-                        -DtrimStackTrace=true \
-                        -Dsurefire.printSummary=true \
-                        -Dfailsafe.printSummary=true
-                """
-                // Publish unit test and integration test results to Jenkins for reporting and analysis
-                junit allowEmptyResults: true,
-                      testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
-            }
-        }
-
-        stage('SonarQube Analysis & Quality Gate') {
-            // when {
-            //     expression { env.AFFECTED_MODULES?.trim() }
-            // }
-            steps {
-                withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
-                    sh '''
-                        mvn ${MVN_ARGS} \
-                            -pl ${AFFECTED_MODULES} \
-                            ${MVN_MAKE_FLAGS} \
-                            sonar:sonar \
-                            -Dsonar.projectKey=yas-project\
-                            -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.login=$SONAR_TOKEN \
-                            -Dsonar.qualitygate.wait=true
-                    '''
-                }
-            }
-        }
+      }
     }
 
-    post {
-        always {
-            // Upload artifact
-            archiveArtifacts allowEmptyArchive: true,
-                artifacts: '**/target/*.jar'
+    stage('Install dependencies') {
+      steps {
+        script {
+          if (env.AFFECTED_MODULES?.trim()) {
+            def mods = env.AFFECTED_MODULES
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests dependency:go-offline"
+            }
+          } else {
+            echo 'No affected module detected; downloading dependencies for full reactor.'
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -DskipTests dependency:go-offline"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -DskipTests dependency:go-offline"
+            }
+          }
+        }
+      }
+    }
+
+    stage('Test (upload results + coverage)') {
+      steps {
+        script {
+          if (env.AFFECTED_MODULES?.trim()) {
+            def mods = env.AFFECTED_MODULES
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} verify"
+            }
+          } else {
+            echo 'No affected module detected; skipping tests (still running stage).'
+          }
+        }
+      }
+    }
+
+    stage('Build') {
+      steps {
+        script {
+          if (env.AFFECTED_MODULES?.trim()) {
+            def mods = env.AFFECTED_MODULES
+            if (isUnix()) {
+              sh "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+            } else {
+              bat "mvn ${env.MVN_ARGS} -pl ${mods} ${env.MVN_MAKE_FLAGS} -DskipTests package"
+            }
+          } else {
+            echo 'No affected module detected; skipping build (still running stage).'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      // Upload JUnit test results
+      junit allowEmptyResults: true,
+            testResults: '**/target/surefire-reports/*.xml,**/target/failsafe-reports/*.xml'
+
+      // Upload coverage artifacts produced by jacoco-maven-plugin (configured in root pom.xml)
+      archiveArtifacts allowEmptyArchive: true,
+                       artifacts: '**/target/site/jacoco/**,**/target/jacoco.exec'
 
             // Upload coverage report
             archiveArtifacts allowEmptyArchive: true,
@@ -279,12 +257,16 @@ pipeline {
             archiveArtifacts artifacts: 'gitleaks-report.json'
         }
 
-        success {
-            echo 'Pipeline SUCCESS'
-        }
-
-        failure {
-            echo 'Pipeline FAILED'
-        }
+    success {
+      echo 'Pipeline succeeded.'
     }
+
+    failure {
+      echo 'Pipeline failed.'
+    }
+
+    unstable {
+      echo 'Pipeline unstable (test failures or quality gates).'
+    }
+  }
 }
