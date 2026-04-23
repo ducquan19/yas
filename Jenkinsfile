@@ -325,7 +325,7 @@ pipeline {
           snykSecurity(
               snykInstallation: env.SNYK_INSTALLATION,
               snykTokenId: env.SNYK_TOKEN_ID,
-              // organisation: env.SNYK_ORG ?: '',
+              organisation: env.SNYK_ORG ?: '',
               monitorProjectOnBuild: true,
               failOnIssues: false,
               failOnError: false,
