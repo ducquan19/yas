@@ -341,11 +341,16 @@ pipeline {
           }
 
           withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+            if (!(env.SNYK_TOKEN ?: '').trim()) {
+              unstable('SNYK_TOKEN is required for Snyk scan. Configure it in Jenkins credentials/environment.')
+              return
+            }
 
             boolean overallPassed = true
 
             moduleList.each { module ->
               echo "=== Snyk scan for module: ${module} ==="
+              boolean modulePassed = true
 
               // Ensure dependencies available (lightweight)
               int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests package")
@@ -355,22 +360,30 @@ pipeline {
                 return
               }
 
+              // Force Maven CLI usage to avoid wrapper permission issues (e.g., ./mvnw EACCES).
+              def testCmd = "${snykCmd} test ${snykOrgArg} --file=${module}/pom.xml --command=mvn${snykMavenArgs}"
+              def monitorCmd = "${snykCmd} monitor ${snykOrgArg} --file=${module}/pom.xml --command=mvn${snykMavenArgs}"
+
               // Dependency scan (Maven)
-              int testStatus = runStatus("${snykCmd} test ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
+              int testStatus = runStatus(testCmd)
 
               if (testStatus != 0) {
-                echo "Retrying ${module} in debug mode..."
-                int debugStatus = runStatus("${snykCmd} test -d ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
+                echo "Retrying ${module} once..."
+                int retryStatus = runStatus(testCmd)
 
-                if (debugStatus != 0) {
+                if (retryStatus != 0) {
                   unstable("Snyk failed for ${module}")
+                  modulePassed = false
                   overallPassed = false
                 }
               }
 
-              // Monitor (optional, only if test passed)
-              if (overallPassed) {
-                runStatus("${snykCmd} monitor ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
+              // Monitor is optional and runs per-module only when that module test passed.
+              if (modulePassed) {
+                int monitorStatus = runStatus(monitorCmd)
+                if (monitorStatus != 0) {
+                  unstable("Snyk monitor failed for ${module}")
+                }
               }
             }
 
