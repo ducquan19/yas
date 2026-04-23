@@ -42,7 +42,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
  
- 
 /**
  * Unit tests for {@link MediaController}.
  *

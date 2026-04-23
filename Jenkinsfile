@@ -311,22 +311,27 @@ pipeline {
                 if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
                   snykCmd = 'npx --yes snyk@latest'
                 }
-                sh "${snykCmd} auth ${env.SNYK_TOKEN}"
+                sh(script: "${snykCmd} auth \$SNYK_TOKEN")
               } else {
                 if (runStatus('where snyk >nul 2>nul') != 0) {
                   snykCmd = 'npx --yes snyk@latest'
                 }
-                bat "${snykCmd} auth ${env.SNYK_TOKEN}"
+                bat(script: "${snykCmd} auth %SNYK_TOKEN%")
               }
 
               moduleList.each { module ->
-                def pomPath = "${module}/pom.xml"
-                int snykStatus = runStatus("${snykCmd} test --file=${pomPath} --package-manager=maven")
-                if (snykStatus != 0) {
-                  echo "Snyk scan failed for ${pomPath} with exit code ${snykStatus}. Retrying in debug mode (-d)."
-                  int debugStatus = runStatus("${snykCmd} test -d --file=${pomPath} --package-manager=maven")
-                  if (debugStatus != 0) {
-                    unstable("Snyk scan failed for ${pomPath} (exit=${debugStatus}). Check debug logs above.")
+                dir(module) {
+                  if (isUnix() && fileExists('mvnw')) {
+                    runStatus('chmod +x mvnw')
+                  }
+
+                  int snykStatus = runStatus("${snykCmd} test --file=pom.xml --package-manager=maven")
+                  if (snykStatus != 0) {
+                    echo "Snyk scan failed for ${module}/pom.xml with exit code ${snykStatus}. Retrying in debug mode (-d)."
+                    int debugStatus = runStatus("${snykCmd} test -d --file=pom.xml --package-manager=maven")
+                    if (debugStatus != 0) {
+                      unstable("Snyk scan failed for ${module}/pom.xml (exit=${debugStatus}). Check debug logs above.")
+                    }
                   }
                 }
               }
