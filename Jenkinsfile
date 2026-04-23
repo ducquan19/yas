@@ -337,10 +337,18 @@ pipeline {
           }
 
           def rootRevision = readRootRevisionFromPom()
-          def additionalArgs = rootRevision ? "-- -Drevision=${rootRevision}" : ''
+          def additionalArgs = rootRevision ? "--command=mvn -- -Drevision=${rootRevision}" : '--command=mvn'
 
           moduleList.each { module ->
             echo "=== Snyk scan for module: ${module} ==="
+
+            // Some Jenkins Linux agents fail with exit -13 when module mvnw lacks execute bit.
+            if (isUnix() && fileExists("${module}/mvnw")) {
+              int chmodStatus = runStatus("chmod +x ${module}/mvnw")
+              if (chmodStatus != 0) {
+                echo "Warning: chmod +x ${module}/mvnw failed. Continue with --command=mvn fallback."
+              }
+            }
 
             // Ensure inter-module SNAPSHOT dependencies are available before plugin scan.
             int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
