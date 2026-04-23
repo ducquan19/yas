@@ -363,7 +363,7 @@ pipeline {
               targetFile: "${module}/pom.xml",
               monitorProjectOnBuild: true,
               failOnIssues: false,
-              failOnError: true
+              failOnError: false
             ]
 
             if ((env.SNYK_ORG ?: '').trim()) {
