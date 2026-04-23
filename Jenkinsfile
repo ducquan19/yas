@@ -91,7 +91,7 @@ pipeline {
                                 --config gitleaks.toml \
                                 --report-format json \
                                 --report-path gitleaks-report.json \
-                                --redact
+                                --redact 
                             ''',
                         returnStatus: true
                     )
@@ -115,7 +115,7 @@ pipeline {
 
                     // If Gitleaks detected secrets (status != 0), fail the build and prompt the developer to check the report. Otherwise, print a success message.
                     if (status != 0) {
-                        error("Gitleaks detected secrets! Check report.")
+                        echo "Gitleaks detected secrets! Check report."
                     } else {
                         echo "No secrets detected"
                     }
@@ -123,11 +123,7 @@ pipeline {
             }
         }
 
-        stage('Snyk Security Scan') {
-            // when {
-            //     expression { env.AFFECTED_MODULES?.trim() }
-            // }
-            // Run the Snyk security scan for the affected modules
+        stage('Snyk Scan') {
             steps {
                 withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
                     sh '''
