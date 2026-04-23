@@ -91,7 +91,7 @@ pipeline {
                                 --config gitleaks.toml \
                                 --report-format json \
                                 --report-path gitleaks-report.json \
-                                --redact || true
+                                --redact 
                             ''',
                         returnStatus: true
                     )
