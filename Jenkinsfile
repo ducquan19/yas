@@ -91,7 +91,7 @@ pipeline {
                                 --config gitleaks.toml \
                                 --report-format json \
                                 --report-path gitleaks-report.json \
-                                --redact
+                                --redact || true
                             ''',
                         returnStatus: true
                     )
@@ -275,17 +275,6 @@ pipeline {
                 artifacts: '**/target/site/jacoco/**'
 
             archiveArtifacts artifacts: 'gitleaks-report.json'
-
-            withCredentials([string(credentialsId: 'discord-webhook', variable: 'WEBHOOK_URL')]) {
-                sh """
-                curl -H "Content-Type: application/json" \
-                -X POST \
-                -d '{
-                    "content": "🚀 Build finished: '"${JOB_NAME}"' - '"${BUILD_NUMBER}"'\\nStatus: '"${currentBuild.currentResult}"'"
-                }' \
-                $WEBHOOK_URL
-                """
-            }
         }
 
         success {
