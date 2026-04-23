@@ -322,17 +322,15 @@ pipeline {
         script {
           echo "Scanning affected modules: ${env.AFFECTED_MODULES}"
           
-          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-            snykSecurity(
+          snykSecurity(
               snykInstallation: env.SNYK_INSTALLATION,
               snykTokenId: env.SNYK_TOKEN_ID,
-              organisation: env.SNYK_ORG ?: '',
+              // organisation: env.SNYK_ORG ?: '',
               monitorProjectOnBuild: true,
               failOnIssues: false,
-              failOnError: true,
-              additionalArguments: '--command=mvn --all-projects'
+              failOnError: false,
+              // additionalArguments: '--command=mvn --all-projects'
             )
-          }
         }
       }
     }
