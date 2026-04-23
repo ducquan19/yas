@@ -121,6 +121,7 @@ pipeline {
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
     ENABLE_SONAR_SCAN = 'false'
+    SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
   }
 
   stages {
@@ -323,6 +324,18 @@ pipeline {
 
           try {
             withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+              if (isUnix()) {
+                sh "npx --yes snyk@latest whoami" 
+              } else {
+                bat "npx --yes snyk@latest whoami"
+              }
+            }
+          } catch (err) {
+            echo "Snyk whoami: ${err.message}"
+          }
+
+          try {
+            withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
               def snykCmd = 'snyk'
               if (isUnix()) {
                 if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
@@ -341,30 +354,24 @@ pipeline {
                 return
               }
 
-              moduleList.each { module ->
-                dir(module) {
-                  if (isUnix() && fileExists('mvnw')) {
-                    runStatus('chmod +x mvnw')
-                  }
+              echo "Starting Snyk scan at root level with --all-projects"
+              boolean scanPassed = true
+              
+              int snykStatus = runStatus("${snykCmd} test --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+              
+              if (snykStatus != 0) {
+                echo "Snyk scan failed with exit code ${snykStatus}. Retrying in debug mode (-d)."
+                int debugStatus = runStatus("${snykCmd} test -d --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                if (debugStatus != 0) {
+                  scanPassed = false
+                  unstable("Snyk scan failed for project (exit=${debugStatus}). Check debug logs above.")
+                }
+              }
 
-                  boolean moduleScanPassed = true
-                  int snykStatus = runStatus("${snykCmd} test --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
-                  
-                  if (snykStatus != 0) {
-                    echo "Snyk scan failed for ${module}/pom.xml with exit code ${snykStatus}. Retrying in debug mode (-d)."
-                    int debugStatus = runStatus("${snykCmd} test -d --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
-                    if (debugStatus != 0) {
-                      moduleScanPassed = false
-                      unstable("Snyk scan failed for ${module}/pom.xml (exit=${debugStatus}). Check debug logs above.")
-                    }
-                  }
-
-                  if (moduleScanPassed) {
-                    int monitorStatus = runStatus("${snykCmd} monitor --file=pom.xml --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
-                    if (monitorStatus != 0) {
-                      unstable("Snyk monitor failed for ${module}/pom.xml (exit=${monitorStatus}).")
-                    }
-                  }
+              if (scanPassed) {
+                int monitorStatus = runStatus("${snykCmd} monitor --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                if (monitorStatus != 0) {
+                  unstable("Snyk monitor failed for project (exit=${monitorStatus}).")
                 }
               }
             }
