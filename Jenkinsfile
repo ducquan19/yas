@@ -123,6 +123,8 @@ pipeline {
     ENABLE_GITLEAKS = 'false'
     ENABLE_SONAR_SCAN = 'false'
     ENABLE_SNYK_SCAN = 'true'
+    SNYK_INSTALLATION = 'snyk@latest'
+    SNYK_TOKEN_ID = 'snyk-token'
     SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
   }
 
@@ -324,71 +326,47 @@ pipeline {
             return
           }
 
-          def snykOrgArg = (env.SNYK_ORG ?: '').trim() ? " --org=${env.SNYK_ORG.trim()}" : ''
-          def rootRevision = readRootRevisionFromPom()
-          def snykMavenArgs = rootRevision ? " -- -Drevision=${rootRevision}" : ""
-
-          // Detect snyk CLI
-          def snykCmd = 'snyk'
-          if (isUnix()) {
-            if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
-              snykCmd = 'npx --yes snyk@latest'
-            }
-          } else {
-            if (runStatus('where snyk >nul 2>nul') != 0) {
-              snykCmd = 'npx --yes snyk@latest'
-            }
+          if (!(env.SNYK_INSTALLATION ?: '').trim()) {
+            unstable('SNYK_INSTALLATION is required for Jenkins Snyk plugin. Configure Jenkins Tool and set env.SNYK_INSTALLATION.')
+            return
           }
 
-          withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-            if (!(env.SNYK_TOKEN ?: '').trim()) {
-              unstable('SNYK_TOKEN is required for Snyk scan. Configure it in Jenkins credentials/environment.')
+          if (!(env.SNYK_TOKEN_ID ?: '').trim()) {
+            unstable('SNYK_TOKEN_ID is required for Jenkins Snyk plugin. Configure Snyk API Token credential and set env.SNYK_TOKEN_ID.')
+            return
+          }
+
+          def rootRevision = readRootRevisionFromPom()
+          def additionalArgs = rootRevision ? "-- -Drevision=${rootRevision}" : ''
+
+          moduleList.each { module ->
+            echo "=== Snyk scan for module: ${module} ==="
+
+            // Ensure inter-module SNAPSHOT dependencies are available before plugin scan.
+            int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
+            if (prepStatus != 0) {
+              unstable("Snyk prep failed for ${module}")
               return
             }
 
-            boolean overallPassed = true
+            def snykStepArgs = [
+              snykInstallation: env.SNYK_INSTALLATION,
+              snykTokenId: env.SNYK_TOKEN_ID,
+              targetFile: "${module}/pom.xml",
+              monitorProjectOnBuild: true,
+              failOnIssues: false,
+              failOnError: false
+            ]
 
-            moduleList.each { module ->
-              echo "=== Snyk scan for module: ${module} ==="
-              boolean modulePassed = true
-
-              // Ensure dependencies available (lightweight)
-              int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests package")
-              if (prepStatus != 0) {
-                unstable("Snyk prep failed for ${module}")
-                overallPassed = false
-                return
-              }
-
-              // Force Maven CLI usage to avoid wrapper permission issues (e.g., ./mvnw EACCES).
-              def testCmd = "${snykCmd} test ${snykOrgArg} --file=${module}/pom.xml --command=mvn${snykMavenArgs}"
-              def monitorCmd = "${snykCmd} monitor ${snykOrgArg} --file=${module}/pom.xml --command=mvn${snykMavenArgs}"
-
-              // Dependency scan (Maven)
-              int testStatus = runStatus(testCmd)
-
-              if (testStatus != 0) {
-                echo "Retrying ${module} once..."
-                int retryStatus = runStatus(testCmd)
-
-                if (retryStatus != 0) {
-                  unstable("Snyk failed for ${module}")
-                  modulePassed = false
-                  overallPassed = false
-                }
-              }
-
-              // Monitor is optional and runs per-module only when that module test passed.
-              if (modulePassed) {
-                int monitorStatus = runStatus(monitorCmd)
-                if (monitorStatus != 0) {
-                  unstable("Snyk monitor failed for ${module}")
-                }
-              }
+            if ((env.SNYK_ORG ?: '').trim()) {
+              snykStepArgs.organisation = env.SNYK_ORG.trim()
+            }
+            if (additionalArgs) {
+              snykStepArgs.additionalArguments = additionalArgs
             }
 
-            if (!overallPassed) {
-              echo "Some modules failed Snyk scan"
+            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+              snykSecurity(snykStepArgs)
             }
           }
         }
