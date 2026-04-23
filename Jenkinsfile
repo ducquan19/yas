@@ -95,6 +95,8 @@ pipeline {
                             ''',
                         returnStatus: true
                     )
+
+                    [ -f gitleaks-report.json ] || echo "[]" > gitleaks-report.json
                     
                     // Convert the Gitleaks JSON report to a simple HTML format for better visualization in Jenkins
                     sh '''
