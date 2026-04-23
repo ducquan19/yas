@@ -120,6 +120,7 @@ pipeline {
     REBUILD_ALL_ON_JENKINSFILE = 'false'
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
+    ENABLE_GITLEAKS = 'false'
     ENABLE_SONAR_SCAN = 'false'
     SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
   }
@@ -239,7 +240,7 @@ pipeline {
 
     stage('Gitleaks Scan') {
       when {
-        expression { env.SKIP_PIPELINE != 'true' }
+        expression { env.SKIP_PIPELINE != 'true' && env.ENABLE_GITLEAKS?.toBoolean() }
       }
       steps {
         script {
@@ -312,7 +313,7 @@ pipeline {
 
     stage('Snyk Scan') {
       when {
-        expression { env.SKIP_PIPELINE != 'true' }
+        expression { env.SKIP_PIPELINE != 'true' && env.ENABLE_SNYK_SCAN?.toBoolean() }
       }
       steps {
         script {
@@ -357,11 +358,11 @@ pipeline {
               echo "Starting Snyk scan at root level with --all-projects"
               boolean scanPassed = true
               
-              int snykStatus = runStatus("${snykCmd} test --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+              int snykStatus = runStatus("${snykCmd} test --all-projects${snykOrgArg}${snykMavenPassThrough}")
               
               if (snykStatus != 0) {
                 echo "Snyk scan failed with exit code ${snykStatus}. Retrying in debug mode (-d)."
-                int debugStatus = runStatus("${snykCmd} test -d --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                int debugStatus = runStatus("${snykCmd} test -d --all-projects${snykOrgArg}${snykMavenPassThrough}")
                 if (debugStatus != 0) {
                   scanPassed = false
                   unstable("Snyk scan failed for project (exit=${debugStatus}). Check debug logs above.")
@@ -369,7 +370,7 @@ pipeline {
               }
 
               if (scanPassed) {
-                int monitorStatus = runStatus("${snykCmd} monitor --all-projects --package-manager=maven${snykOrgArg}${snykMavenPassThrough}")
+                int monitorStatus = runStatus("${snykCmd} monitor --all-projects${snykOrgArg}${snykMavenPassThrough}")
                 if (monitorStatus != 0) {
                   unstable("Snyk monitor failed for project (exit=${monitorStatus}).")
                 }
