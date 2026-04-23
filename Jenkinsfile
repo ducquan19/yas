@@ -86,7 +86,7 @@ pipeline {
                 script {
                     def status = sh(
                         script: '''
-                            ./gitleaks detect \
+                            gitleaks detect \
                                 --source . \
                                 --config gitleaks.toml \
                                 --report-format json \
