@@ -319,66 +319,64 @@ pipeline {
       steps {
         script {
           def moduleList = readAffectedModulesList()
-          def snykOrgArg = (env.SNYK_ORG ?: '').trim() ? " --org=${env.SNYK_ORG.trim()}" : ''
-          
-          def rootRevision = readRootRevisionFromPom()
-          def snykMavenPassThrough = rootRevision ? " -- -Drevision=${rootRevision}" : ""
-
-          try {
-            withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-              if (isUnix()) {
-                sh "npx --yes snyk@latest whoami" 
-              } else {
-                bat "npx --yes snyk@latest whoami"
-              }
-            }
-          } catch (err) {
-            echo "Snyk whoami: ${err.message}"
+          if (!moduleList || moduleList.isEmpty()) {
+            echo "No affected modules → skip Snyk scan"
+            return
           }
 
-          try {
-            withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
-              def snykCmd = 'snyk'
-              if (isUnix()) {
-                if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
-                  snykCmd = 'npx --yes snyk@latest'
-                }
-              } else {
-                if (runStatus('where snyk >nul 2>nul') != 0) {
-                  snykCmd = 'npx --yes snyk@latest'
-                }
-              }
+          def snykOrgArg = (env.SNYK_ORG ?: '').trim() ? " --org=${env.SNYK_ORG.trim()}" : ''
+          def rootRevision = readRootRevisionFromPom()
+          def snykMavenArgs = rootRevision ? " -- -Drevision=${rootRevision}" : ""
 
-              def modsCsv = moduleList.join(',')
-              int prepStatus = runStatus("mvn ${env.MVN_ARGS} -U -pl ${modsCsv} -am -DskipTests install")
+          // Detect snyk CLI
+          def snykCmd = 'snyk'
+          if (isUnix()) {
+            if (runStatus('command -v snyk >/dev/null 2>&1') != 0) {
+              snykCmd = 'npx --yes snyk@latest'
+            }
+          } else {
+            if (runStatus('where snyk >nul 2>nul') != 0) {
+              snykCmd = 'npx --yes snyk@latest'
+            }
+          }
+
+          withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+
+            boolean overallPassed = true
+
+            moduleList.each { module ->
+              echo "=== Snyk scan for module: ${module} ==="
+
+              // Ensure dependencies available (lightweight)
+              int prepStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests package")
               if (prepStatus != 0) {
-                unstable("Preparation for Snyk failed while installing dependencies for modules: ${modsCsv}")
+                unstable("Snyk prep failed for ${module}")
+                overallPassed = false
                 return
               }
 
-              echo "Starting Snyk scan at root level with --all-projects"
-              boolean scanPassed = true
-              
-              int snykStatus = runStatus("${snykCmd} test --all-projects${snykOrgArg}${snykMavenPassThrough}")
-              
-              if (snykStatus != 0) {
-                echo "Snyk scan failed with exit code ${snykStatus}. Retrying in debug mode (-d)."
-                int debugStatus = runStatus("${snykCmd} test -d --all-projects${snykOrgArg}${snykMavenPassThrough}")
+              // Dependency scan (Maven)
+              int testStatus = runStatus("${snykCmd} test ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
+
+              if (testStatus != 0) {
+                echo "Retrying ${module} in debug mode..."
+                int debugStatus = runStatus("${snykCmd} test -d ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
+
                 if (debugStatus != 0) {
-                  scanPassed = false
-                  unstable("Snyk scan failed for project (exit=${debugStatus}). Check debug logs above.")
+                  unstable("Snyk failed for ${module}")
+                  overallPassed = false
                 }
               }
 
-              if (scanPassed) {
-                int monitorStatus = runStatus("${snykCmd} monitor --all-projects${snykOrgArg}${snykMavenPassThrough}")
-                if (monitorStatus != 0) {
-                  unstable("Snyk monitor failed for project (exit=${monitorStatus}).")
-                }
+              // Monitor (optional, only if test passed)
+              if (overallPassed) {
+                runStatus("${snykCmd} monitor ${snykOrgArg} --file=${module}/pom.xml${snykMavenArgs}")
               }
             }
-          } catch (err) {
-            unstable("Snyk scan failed but pipeline continues: ${err.message}")
+
+            if (!overallPassed) {
+              echo "Some modules failed Snyk scan"
+            }
           }
         }
       }
