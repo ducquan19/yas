@@ -115,7 +115,8 @@ pipeline {
 
                     // If Gitleaks detected secrets (status != 0), fail the build and prompt the developer to check the report. Otherwise, print a success message.
                     if (status != 0) {
-                        echo "Gitleaks detected secrets! Check report."
+                        echo "GITLEAKS WARNING: secrets detected (see report)"
+                        currentBuild.result = 'UNSTABLE'
                     } else {
                         echo "No secrets detected"
                     }
@@ -125,11 +126,24 @@ pipeline {
 
         stage('Snyk Scan') {
             steps {
-                withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-                    sh '''
-                        snyk auth $SNYK_TOKEN
-                        snyk test || true
-                    '''
+                script {
+                    withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
+
+                        def snykStatus = sh(
+                            script: '''
+                                snyk auth $SNYK_TOKEN
+                                snyk test
+                            ''',
+                            returnStatus: true
+                        )
+
+                        if (snykStatus != 0) {
+                            echo "SNYK WARNING: vulnerabilities detected"
+                            currentBuild.result = 'UNSTABLE'
+                        } else {
+                            echo "No vulnerabilities detected"
+                        }
+                    }
                 }
             }
         }
@@ -240,25 +254,21 @@ pipeline {
         }
 
         stage('SonarQube Analysis & Quality Gate') {
+            when {
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
             steps {
-                script {
-                    def mvnFlags = env.MVN_MAKE_FLAGS ?: ""
-
-                    if (!fileExists('pom.xml')) {
-                        error("No Maven project found in workspace")
-                    }
-
-                    echo "Running SonarQube scan with flags: ${mvnFlags}"
-
-                    withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
-                        sh """
-                            mvn ${MVN_ARGS} ${mvnFlags} sonar:sonar \
-                                -Dsonar.projectKey=yas-project \
-                                -Dsonar.host.url=http://localhost:9000 \
-                                -Dsonar.login=$SONAR_TOKEN \
-                                -Dsonar.qualitygate.wait=true
-                        """
-                    }
+                withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
+                    sh """
+                        mvn ${MVN_ARGS} \
+                            -pl ${AFFECTED_MODULES} \
+                            ${MVN_MAKE_FLAGS} \
+                            sonar:sonar \
+                            -Dsonar.projectKey=yas-project\
+                            -Dsonar.host.url=http://localhost:9000 \
+                            -Dsonar.login=$SONAR_TOKEN \
+                            -Dsonar.qualitygate.wait=true
+                    """
                 }
             }
         }
