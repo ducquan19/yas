@@ -120,8 +120,9 @@ pipeline {
     REBUILD_ALL_ON_JENKINSFILE = 'false'
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
-    ENABLE_GITLEAKS = 'true'
+    ENABLE_GITLEAKS = 'false'
     ENABLE_SONAR_SCAN = 'false'
+    ENABLE_SNYK_SCAN = 'true'
     SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
   }
 
