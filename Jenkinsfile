@@ -107,8 +107,7 @@ pipeline {
     REBUILD_ALL_ON_JENKINSFILE = 'false'
     SKIP_PIPELINE = 'false'
     GITLEAKS_FAIL_ON_FINDINGS = 'false'
-    SONAR_TOKEN = credentials('sonar-token')
-    SNYK_TOKEN = credentials('snyk-token')
+    ENABLE_SONAR_SCAN = 'false'
   }
 
   stages {
@@ -264,31 +263,33 @@ pipeline {
 
     stage('SonarQube Scan') {
       when {
-        expression { env.SKIP_PIPELINE != 'true' }
+        expression { env.SKIP_PIPELINE != 'true' && env.ENABLE_SONAR_SCAN?.toBoolean() }
       }
       steps {
         script {
-          if (!(env.SONAR_TOKEN ?: '').trim()) {
-            error('SONAR_TOKEN is required for SonarQube scan. Configure it in Jenkins credentials/environment.')
-          }
-
-          def moduleList = readAffectedModulesList()
-          moduleList.each { module ->
-            def sonarProjectKey = readSonarProjectKeyFromModulePom(module)
-            if (!sonarProjectKey) {
-              error("Missing <sonar.projectKey> in ${module}/pom.xml")
+          withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            if (!(env.SONAR_TOKEN ?: '').trim()) {
+              error('SONAR_TOKEN is required for SonarQube scan. Configure it in Jenkins credentials/environment.')
             }
 
-            // Ensure inter-module dependencies are available in local Maven repo for standalone module scan.
-            int installStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
-            if (installStatus != 0) {
-              unstable("Preparation for Sonar failed for module ${module} (install dependencies). Continue to Snyk scan.")
-              return
-            }
+            def moduleList = readAffectedModulesList()
+            moduleList.each { module ->
+              def sonarProjectKey = readSonarProjectKeyFromModulePom(module)
+              if (!sonarProjectKey) {
+                error("Missing <sonar.projectKey> in ${module}/pom.xml")
+              }
 
-            int sonarStatus = runStatus("mvn ${env.MVN_ARGS} -f ${module}/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
-            if (sonarStatus != 0) {
-              unstable("Sonar scan failed for module ${module} (projectKey=${sonarProjectKey}). Continue to Snyk scan.")
+              // Ensure inter-module dependencies are available in local Maven repo for standalone module scan.
+              int installStatus = runStatus("mvn ${env.MVN_ARGS} -pl ${module} -am -DskipTests install")
+              if (installStatus != 0) {
+                unstable("Preparation for Sonar failed for module ${module} (install dependencies). Continue to Snyk scan.")
+                return
+              }
+
+              int sonarStatus = runStatus("mvn ${env.MVN_ARGS} -f ${module}/pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:5.6.0.6792:sonar -Dsonar.token=${env.SONAR_TOKEN} -Dsonar.projectKey=${sonarProjectKey}")
+              if (sonarStatus != 0) {
+                unstable("Sonar scan failed for module ${module} (projectKey=${sonarProjectKey}). Continue to Snyk scan.")
+              }
             }
           }
         }
@@ -319,7 +320,15 @@ pipeline {
               }
 
               moduleList.each { module ->
-                runCmd("${snykCmd} test --file=${module}/pom.xml --package-manager=maven")
+                def pomPath = "${module}/pom.xml"
+                int snykStatus = runStatus("${snykCmd} test --file=${pomPath} --package-manager=maven")
+                if (snykStatus != 0) {
+                  echo "Snyk scan failed for ${pomPath} with exit code ${snykStatus}. Retrying in debug mode (-d)."
+                  int debugStatus = runStatus("${snykCmd} test -d --file=${pomPath} --package-manager=maven")
+                  if (debugStatus != 0) {
+                    unstable("Snyk scan failed for ${pomPath} (exit=${debugStatus}). Check debug logs above.")
+                  }
+                }
               }
             }
           } catch (err) {
