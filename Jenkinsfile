@@ -250,6 +250,13 @@ pipeline {
                 // Publish unit test and integration test results to Jenkins for reporting and analysis
                 junit allowEmptyResults: true,
                       testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
+                
+                // Publish code coverage reports to Jenkins using the Jacoco plugin, allowing for visualization of test coverage and identification of untested code areas
+                recordCoverage(
+                    tools: [
+                        jacoco(pattern: '**/target/site/jacoco/jacoco.xml')
+                    ]
+                )
             }
         }
 
@@ -280,11 +287,17 @@ pipeline {
             archiveArtifacts allowEmptyArchive: true,
                 artifacts: '**/target/*.jar'
 
+            // Upload test reports
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
+
             // Upload coverage report
             archiveArtifacts allowEmptyArchive: true,
                 artifacts: '**/target/site/jacoco/**'
 
-            archiveArtifacts artifacts: 'gitleaks-report.json'
+            // Upload Gitleaks report
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: 'gitleaks-report.json'
         }
 
         success {
