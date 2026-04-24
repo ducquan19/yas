@@ -84,10 +84,13 @@ pipeline {
         stage('Gitleaks Scan') {
             steps {
                 script {
+                    def baseBranch = env.CHANGE_TARGET ?: "main"
+
                     def status = sh(
                         script: '''
                             gitleaks detect \
                                 --source . \
+                                --log-opts= "origin/${baseBranch}...HEAD" \
                                 --config gitleaks.toml \
                                 --report-format json \
                                 --report-path gitleaks-report.json \
