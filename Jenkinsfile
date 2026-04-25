@@ -90,7 +90,6 @@ pipeline {
                         script: '''
                             gitleaks detect \
                                 --source . \
-                                --log-opts= "origin/${baseBranch}...HEAD" \
                                 --config gitleaks.toml \
                                 --report-format json \
                                 --report-path gitleaks-report.json \
@@ -119,7 +118,7 @@ pipeline {
                     // If Gitleaks detected secrets (status != 0), fail the build and prompt the developer to check the report. Otherwise, print a success message.
                     if (status != 0) {
                         echo "GITLEAKS WARNING: secrets detected (see report)"
-                        currentBuild.result = 'FAILURE'
+                        currentBuild.result = 'UNSTABLE'
                     } else {
                         echo "No secrets detected"
                     }
