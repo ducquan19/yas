@@ -253,13 +253,61 @@ pipeline {
                 // Publish unit test and integration test results to Jenkins for reporting and analysis
                 junit allowEmptyResults: true,
                       testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
-                
-                // Publish code coverage reports to Jenkins using the Jacoco plugin, allowing for visualization of test coverage and identification of untested code areas
-                recordCoverage(
-                    tools: [
-                        jacoco(pattern: '**/target/site/jacoco/jacoco.xml')
-                    ]
-                )
+            }
+        }
+
+        stage('Coverage Gate') {
+            when {
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
+            steps {
+                script {
+                    def modules = env.AFFECTED_MODULES
+                        .split(',')
+                        .collect { it.trim() }
+                        .findAll { it }
+
+                    if (!modules || modules.isEmpty()) {
+                        echo "No affected modules → skipping coverage gate"
+                        return
+                    }
+
+                    echo "Running coverage for modules: ${modules.join(', ')}"
+
+                    // 2. Build Jacoco report paths dynamically
+                    def coverageTools = modules.collect { module ->
+                        [
+                            parser: 'JACOCO',
+                            pattern: "${module}/target/site/jacoco/jacoco.xml"
+                        ]
+                    }
+
+                    // 3. Execute coverage gate
+                    recordCoverage(
+                        tools: coverageTools,
+                        sourceCodeRetention: 'NEVER',
+                        qualityGates: [
+                            [
+                                threshold: 70.0,
+                                metric: 'LINE',
+                                baseline: 'PROJECT',
+                                criticality: 'FAILURE'
+                            ],
+                            [
+                                threshold: 50.0,
+                                metric: 'BRANCH',
+                                baseline: 'PROJECT',
+                                criticality: 'FAILURE'
+                            ],
+                            [
+                                threshold: 70.0,
+                                metric: 'INSTRUCTION',
+                                baseline: 'PROJECT',
+                                criticality: 'UNSTABLE'
+                            ]
+                        ]
+                    )
+                }
             }
         }
 
