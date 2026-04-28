@@ -217,28 +217,30 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-                        // Authenticate Snyk once at the root level
+
                         sh 'snyk auth $SNYK_TOKEN'
-                        
-                        // Retrieve the list of affected modules from the environment variable
+
                         def modules = env.AFFECTED_MODULES.split(',')
-                        
-                        // Iterate through each affected module to perform the scan
-                        for (int i = 0; i < modules.length; i++) {
-                            def module = modules[i].trim()
+
+                        for (module in modules) {
+                            module = module.trim()
+                            if (!module) continue
+
                             echo "--- Running Snyk scan for module: ${module} ---"
-                            
-                            // Navigate to the respective service directory
+
                             dir(module) {
-                                def snykStatus = sh(
-                                    script: '''
-                                        snyk test -d || true
-                                        snyk code test || true
-                                    ''',
+
+                                def depStatus = sh(
+                                    script: 'snyk test -d',
                                     returnStatus: true
                                 )
 
-                                if (snykStatus != 0) {
+                                def codeStatus = sh(
+                                    script: 'snyk code test',
+                                    returnStatus: true
+                                )
+
+                                if (depStatus != 0 || codeStatus != 0) {
                                     echo "SNYK WARNING: vulnerabilities detected in ${module}"
                                     currentBuild.result = 'UNSTABLE'
                                 } else {
