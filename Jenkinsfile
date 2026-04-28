@@ -248,7 +248,7 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test -d --file=pom.xml --maven-aggregate-project -- --no-transfer-progress --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk test -d --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
                                     returnStatus: true
                                 )
 
