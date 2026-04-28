@@ -240,8 +240,6 @@ pipeline {
 
                             dir(module) {
 
-
-
                                 def depStatus = sh(
                                     script: 'snyk test -d --file=pom.xml',
                                     returnStatus: true
