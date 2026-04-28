@@ -222,6 +222,7 @@ pipeline {
 
                         sh 'snyk auth $SNYK_TOKEN'
                         sh 'snyk whoami'
+                        sh 'echo $SNYK_TOKEN'
 
                         // sh '''
                         //   if [ -f "mvnw" ]; then
@@ -242,7 +243,7 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test -d --file=pom.xml',
+                                    script: 'snyk test -d --file=pom.xml --maven-aggregate-project -- --no-transfer-progress',
                                     returnStatus: true
                                 )
 
