@@ -224,7 +224,7 @@ pipeline {
                         sh 'snyk whoami'
                         sh '''
                           echo "=== KIỂM TRA CREDENTIALS JENKINS ==="
-                          TOKEN_PREFIX=$(echo $SNYK_TOKEN | cut -c1-5)
+                          TOKEN_PREFIX=$(echo $SNYK_TOKEN | cut -c1-15)
                           echo "Thẻ Snyk đang dùng thực sự bắt đầu bằng: $TOKEN_PREFIX"
                           echo "====================================="
                         '''
@@ -248,12 +248,12 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test -d --file=pom.xml --maven-aggregate-project -- --no-transfer-progress',
+                                    script: 'snyk test -d --file=pom.xml --maven-aggregate-project -- --no-transfer-progress --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test',
+                                    script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
                                     returnStatus: true
                                 )
 
