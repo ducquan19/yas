@@ -222,7 +222,12 @@ pipeline {
 
                         sh 'snyk auth $SNYK_TOKEN'
                         sh 'snyk whoami'
-                        sh 'echo $SNYK_TOKEN'
+                        sh '''
+                          echo "=== KIỂM TRA CREDENTIALS JENKINS ==="
+                          TOKEN_PREFIX=$(echo $SNYK_TOKEN | cut -c1-5)
+                          echo "Thẻ Snyk đang dùng thực sự bắt đầu bằng: $TOKEN_PREFIX"
+                          echo "====================================="
+                        '''
 
                         // sh '''
                         //   if [ -f "mvnw" ]; then
