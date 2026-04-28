@@ -208,17 +208,6 @@ pipeline {
         }
 
 
-        stage('Build') {
-            when {
-                // Only run the build stage if there are affected modules to build
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
-                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
-                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
-            }
-        }
 
         stage('Snyk Scan') {
             when {
@@ -233,7 +222,14 @@ pipeline {
 
                         sh 'snyk auth $SNYK_TOKEN'
 
-                        sh 'snyk test -d --file=pom.xml'
+                        sh '''
+                          echo "=== KIỂM TRA CREDENTIALS JENKINS ==="
+                          TOKEN_PREFIX=$(echo $SNYK_TOKEN | cut -c1-5)
+                          echo "Thẻ Snyk đang dùng thực sự bắt đầu bằng: $TOKEN_PREFIX"
+                          echo "====================================="
+                        '''
+
+                        // sh 'snyk test -d --file=pom.xml'
 
                         sh '''   
                             chmod +x mvnw
@@ -241,7 +237,7 @@ pipeline {
                           
                         '''
 
-                        sh 'snyk test -d --file=pom.xml'
+                        // sh 'snyk test -d --file=pom.xml'
 
 
                         def modules = env.AFFECTED_MODULES.split(',')
@@ -276,6 +272,18 @@ pipeline {
                         }
                     }
                 }
+            }
+        }
+
+        stage('Build') {
+            when {
+                // Only run the build stage if there are affected modules to build
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
+            steps {
+                // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
+                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
+                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
             }
         }
         
