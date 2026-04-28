@@ -207,6 +207,19 @@ pipeline {
             }
         }
 
+
+        stage('Build') {
+            when {
+                // Only run the build stage if there are affected modules to build
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
+            steps {
+                // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
+                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
+                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
+            }
+        }
+
         stage('Snyk Scan') {
             when {
                 allOf {
@@ -217,13 +230,6 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-                        
-                        sh '''
-                          if [ -f "mvnw" ]; then
-                            chmod +x mvnw
-                            ./mvnw clean install -DskipTests
-                          fi
-                        '''
 
                         def modules = env.AFFECTED_MODULES.split(',')
 
@@ -236,12 +242,12 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk test --file=pom.xml',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk code test',
                                     returnStatus: true
                                 )
 
@@ -257,19 +263,7 @@ pipeline {
                 }
             }
         }
-
-        stage('Build') {
-            when {
-                // Only run the build stage if there are affected modules to build
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
-                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
-                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
-            }
-        }
-
+        
         stage('Unit & Integration Tests') {
             when {
                 expression { env.AFFECTED_MODULES?.trim() }
