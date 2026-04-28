@@ -200,7 +200,7 @@ pipeline {
         stage('Snyk Scan') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
 
                         sh '''
                             snyk auth $SNYK_TOKEN
@@ -216,12 +216,12 @@ pipeline {
                             echo "Scanning module: ${module}"
 
                             def depStatus = sh(
-                                script: "snyk test --file=${module}/pom.xml",
+                                script: "snyk test --file=${module}/pom.xml --org= -d",
                                 returnStatus: true
                             )
 
                             def codeStatus = sh(
-                                script: "snyk code test ${module}",
+                                script: "snyk code test ${module} -d",
                                 returnStatus: true
                             )
 
