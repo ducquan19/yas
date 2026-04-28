@@ -77,7 +77,11 @@ pipeline {
             steps {
                 // Perform a clean checkout of the source code
                 checkout scm  
-                sh 'git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*'
+                script {
+                    if (env.CHANGE_TARGET) {
+                        sh "git fetch --no-tags origin ${env.CHANGE_TARGET}"
+                    }
+                }
             }
         }
 
