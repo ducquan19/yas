@@ -125,44 +125,6 @@ pipeline {
             }
         }
 
-        stage('Snyk Scan') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-
-                        sh '''
-                            snyk auth $SNYK_TOKEN
-                            mvn clean install -DskipTests
-                        '''
-
-                        def modules = env.AFFECTED_MODULES?.split(',')
-
-                        for (m in modules) {
-                            def module = m.trim()
-                            if (!module) continue
-
-                            echo "Scanning module: ${module}"
-
-                            def depStatus = sh(
-                                script: "snyk test --file=${module}/pom.xml",
-                                returnStatus: true
-                            )
-
-                            def codeStatus = sh(
-                                script: "snyk code test ${module}",
-                                returnStatus: true
-                            )
-
-                            if (depStatus != 0 || codeStatus != 0) {
-                                currentBuild.result = 'UNSTABLE'
-                                echo "VULNERABILITIES in ${module}"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Detect Changes') {
             steps {
                 script {
@@ -230,6 +192,44 @@ pipeline {
                         currentBuild.description = "${env.BRANCH_NAME ?: ''} | no service changes"
                         echo "Changed files:\n${normalizedChangedFiles.join('\n')}"
                         echo "No Maven module affected → build/test stages will be no-op"
+                    }
+                }
+            }
+        }
+
+        stage('Snyk Scan') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
+
+                        sh '''
+                            snyk auth $SNYK_TOKEN
+                            mvn clean install -DskipTests
+                        '''
+
+                        def modules = env.AFFECTED_MODULES?.split(',')
+
+                        for (m in modules) {
+                            def module = m.trim()
+                            if (!module) continue
+
+                            echo "Scanning module: ${module}"
+
+                            def depStatus = sh(
+                                script: "snyk test --file=${module}/pom.xml",
+                                returnStatus: true
+                            )
+
+                            def codeStatus = sh(
+                                script: "snyk code test ${module}",
+                                returnStatus: true
+                            )
+
+                            if (depStatus != 0 || codeStatus != 0) {
+                                currentBuild.result = 'UNSTABLE'
+                                echo "VULNERABILITIES in ${module}"
+                            }
+                        }
                     }
                 }
             }
