@@ -218,7 +218,11 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
                         
-                        sh 'if [ -f "mvnw" ]; then chmod +x mvnw && ./mvnw clean install -DskipTests; fi'
+                        sh '''
+                          if [ -f "mvnw" ]; then
+                            chmod +x mvnw
+                          fi
+                        '''
 
                         def modules = env.AFFECTED_MODULES.split(',')
 
