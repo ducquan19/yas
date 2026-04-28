@@ -137,7 +137,7 @@ public class CheckoutService {
                 .orElseThrow(() -> new NotFoundException(CHECKOUT_NOT_FOUND, checkoutStatusPutVm.checkoutId()));
 
         if (isNotOwnedByCurrentUser(checkout)) {
-            throw new ForbiddenException(ApiConstant.FORBIDDEN, "You are not this checkout");
+            throw new ForbiddenException(ApiConstant.FORBIDDEN, "You are not authorized to update this checkout");
         }
 
         checkout.setCheckoutState(CheckoutState.valueOf(checkoutStatusPutVm.checkoutStatus()));
