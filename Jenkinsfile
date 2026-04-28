@@ -243,6 +243,13 @@ pipeline {
 
                             dir(module) {
 
+                                sh '''
+                                  
+                                    chmod +x mvnw
+                                    ./mvnw clean install -DskipTests
+                                  
+                                '''
+
                                 def depStatus = sh(
                                     script: 'snyk test -d --file=pom.xml',
                                     returnStatus: true
