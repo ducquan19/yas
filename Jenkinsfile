@@ -218,10 +218,10 @@ pipeline {
             }
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
 
                         sh 'snyk auth $SNYK_TOKEN'
-                        
+
                         sh '''
                           if [ -f "mvnw" ]; then
                             chmod +x mvnw
