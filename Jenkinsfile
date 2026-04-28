@@ -229,12 +229,8 @@ pipeline {
                           echo "====================================="
                         '''
 
-                        // sh '''
-                        //   if [ -f "mvnw" ]; then
-                        //     chmod +x mvnw
-                        //     ./mvnw clean install -DskipTests
-                        //   fi
-                        // '''
+                        // Ensure Maven wrapper is executable for Snyk dependency tree
+                        sh 'if [ -f "mvnw" ]; then chmod +x mvnw; fi'
 
 
                         def modules = env.AFFECTED_MODULES.split(',')
@@ -246,11 +242,13 @@ pipeline {
                             echo "--- Running Snyk scan for module: ${module} ---"
 
                             dir(module) {
-
-                                def depStatus = sh(
-                                    script: 'snyk test -d --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
-                                    returnStatus: true
-                                )
+                                def depStatus = 0
+                                withEnv(['SNYK_MVN_CMD=../mvnw']) {
+                                    depStatus = sh(
+                                        script: 'snyk test -d --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                        returnStatus: true
+                                    )
+                                }
 
                                 def codeStatus = sh(
                                     script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
