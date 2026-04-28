@@ -230,13 +230,19 @@ pipeline {
 
                             dir(module) {
 
+                                sh '''
+                                  if [ -f "mvnw" ]; then
+                                    chmod +x mvnw
+                                  fi
+                                '''
+
                                 def depStatus = sh(
-                                    script: 'snyk test -d',
+                                    script: 'snyk test -d --org=tbnguyen274',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test',
+                                    script: 'snyk code test --org=tbnguyen274',
                                     returnStatus: true
                                 )
 
