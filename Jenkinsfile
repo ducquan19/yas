@@ -222,12 +222,12 @@ pipeline {
 
                         sh 'snyk auth $SNYK_TOKEN'
 
-                        sh '''
-                          if [ -f "mvnw" ]; then
-                            chmod +x mvnw
-                            ./mvnw clean install -DskipTests
-                          fi
-                        '''
+                        // sh '''
+                        //   if [ -f "mvnw" ]; then
+                        //     chmod +x mvnw
+                        //     ./mvnw clean install -DskipTests
+                        //   fi
+                        // '''
 
 
                         def modules = env.AFFECTED_MODULES.split(',')
