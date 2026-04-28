@@ -242,6 +242,8 @@ pipeline {
                             echo "--- Running Snyk scan for module: ${module} ---"
 
                             dir(module) {
+                                // Ensure Maven dependency tree is resolvable before Snyk scan
+                                sh "mvn -q -DskipTests -f ../pom.xml -pl :${module} -am -U dependency:tree"
                                 def depStatus = 0
                                 withEnv(['SNYK_MVN_CMD=../mvnw']) {
                                     depStatus = sh(

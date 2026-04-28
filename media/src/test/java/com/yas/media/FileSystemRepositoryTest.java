@@ -31,7 +31,6 @@ class FileSystemRepositoryTest {
     @Mock
     private FilesystemConfig filesystemConfig;
 
-
     @Mock
     private File file;
 
