@@ -221,23 +221,13 @@ pipeline {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
 
                         sh 'snyk auth $SNYK_TOKEN'
-
+                        
                         sh '''
-                          echo "=== KIỂM TRA CREDENTIALS JENKINS ==="
-                          TOKEN_PREFIX=$(echo $SNYK_TOKEN | cut -c1-5)
-                          echo "Thẻ Snyk đang dùng thực sự bắt đầu bằng: $TOKEN_PREFIX"
-                          echo "====================================="
-                        '''
-
-                        // sh 'snyk test -d --file=pom.xml'
-
-                        sh '''   
+                          if [ -f "mvnw" ]; then
                             chmod +x mvnw
                             ./mvnw clean install -DskipTests
-                          
+                          fi
                         '''
-
-                        // sh 'snyk test -d --file=pom.xml'
 
 
                         def modules = env.AFFECTED_MODULES.split(',')
