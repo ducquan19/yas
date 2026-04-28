@@ -218,7 +218,7 @@ pipeline {
             }
             steps {
                 script {
-                    withCredentials([snykToken(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
 
                         sh 'snyk auth $SNYK_TOKEN'
 
