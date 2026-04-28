@@ -132,8 +132,7 @@ pipeline {
 
                         sh '''
                             snyk auth $SNYK_TOKEN
-                            chmod +x mvnw
-                            ./mvnw -DskipTests clean install
+                            mvn clean install -DskipTests
                         '''
 
                         def modules = env.AFFECTED_MODULES?.split(',')
