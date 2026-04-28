@@ -221,6 +221,7 @@ pipeline {
                     withCredentials([string(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
 
                         sh 'snyk auth $SNYK_TOKEN'
+                        sh 'snyk whoami'
 
                         // sh '''
                         //   if [ -f "mvnw" ]; then
