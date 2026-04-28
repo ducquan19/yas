@@ -204,7 +204,7 @@ pipeline {
 
                         sh '''
                             snyk auth $SNYK_TOKEN
-                            mvn clean install -DskipTests
+                            mvn dependency:go-offline
                         '''
 
                         def modules = env.AFFECTED_MODULES?.split(',')
@@ -216,12 +216,12 @@ pipeline {
                             echo "Scanning module: ${module}"
 
                             def depStatus = sh(
-                                script: "snyk test --file=${module}/pom.xml --org= -d",
+                                script: "snyk test --file=${module}/pom.xml --org=tbnguyen274 -d",
                                 returnStatus: true
                             )
 
                             def codeStatus = sh(
-                                script: "snyk code test ${module} -d",
+                                script: "snyk code test ${module} --org=tbnguyen274 -d",
                                 returnStatus: true
                             )
 
