@@ -231,6 +231,8 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
 
+                        sh 'snyk auth $SNYK_TOKEN'
+
                         def modules = env.AFFECTED_MODULES.split(',')
 
                         for (module in modules) {
@@ -242,7 +244,7 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml',
+                                    script: 'snyk test -d --file=pom.xml',
                                     returnStatus: true
                                 )
 
