@@ -217,8 +217,13 @@ pipeline {
             steps {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
-
-                        sh 'snyk auth $SNYK_TOKEN'
+                        
+                        sh '''
+                          if [ -f "mvnw" ]; then
+                            chmod +x mvnw
+                            ./mvnw clean install -DskipTests
+                          fi
+                        '''
 
                         def modules = env.AFFECTED_MODULES.split(',')
 
@@ -230,14 +235,8 @@ pipeline {
 
                             dir(module) {
 
-                                sh '''
-                                  if [ -f "mvnw" ]; then
-                                    chmod +x mvnw
-                                  fi
-                                '''
-
                                 def depStatus = sh(
-                                    script: 'snyk test -d --org=tbnguyen274',
+                                    script: 'snyk test --file=pom.xml --org=tbnguyen274',
                                     returnStatus: true
                                 )
 
