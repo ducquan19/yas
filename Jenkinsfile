@@ -62,11 +62,6 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
-    triggers {
-        //  Poll the SCM every 5 minutes to check for changes
-        pollSCM('H/5 * * * *')
-    }
-
     environment {
         // Define environment variables for Maven commands
         MVN_ARGS = '-B -ntp'
