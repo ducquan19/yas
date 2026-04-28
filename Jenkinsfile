@@ -130,20 +130,34 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'snyk-token-1', variable: 'SNYK_TOKEN')]) {
 
-                        def snykStatus = sh(
-                            script: '''
-                                snyk auth $SNYK_TOKEN
-                                snyk test
-                                snyk code test
-                            ''',
-                            returnStatus: true
-                        )
+                        sh '''
+                            snyk auth $SNYK_TOKEN
+                            chmod +x mvnw
+                            ./mvnw -DskipTests clean install
+                        '''
 
-                        if (snykStatus != 0) {
-                            echo "SNYK WARNING: vulnerabilities detected"
-                            currentBuild.result = 'SUCCESS'
-                        } else {
-                            echo "No vulnerabilities detected"
+                        def modules = env.AFFECTED_MODULES?.split(',')
+
+                        for (m in modules) {
+                            def module = m.trim()
+                            if (!module) continue
+
+                            echo "Scanning module: ${module}"
+
+                            def depStatus = sh(
+                                script: "snyk test --file=${module}/pom.xml",
+                                returnStatus: true
+                            )
+
+                            def codeStatus = sh(
+                                script: "snyk code test ${module}",
+                                returnStatus: true
+                            )
+
+                            if (depStatus != 0 || codeStatus != 0) {
+                                currentBuild.result = 'UNSTABLE'
+                                echo "VULNERABILITIES in ${module}"
+                            }
                         }
                     }
                 }
