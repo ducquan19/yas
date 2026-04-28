@@ -221,6 +221,7 @@ pipeline {
                         sh '''
                           if [ -f "mvnw" ]; then
                             chmod +x mvnw
+                            ./mvnw clean install -DskipTests
                           fi
                         '''
 
