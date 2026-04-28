@@ -233,6 +233,17 @@ pipeline {
 
                         sh 'snyk auth $SNYK_TOKEN'
 
+                        sh 'snyk test -d --file=pom.xml'
+
+                        sh '''   
+                            chmod +x mvnw
+                            ./mvnw clean install -DskipTests
+                          
+                        '''
+
+                        sh 'snyk test -d --file=pom.xml'
+
+
                         def modules = env.AFFECTED_MODULES.split(',')
 
                         for (module in modules) {
@@ -243,12 +254,7 @@ pipeline {
 
                             dir(module) {
 
-                                sh '''
-                                  
-                                    chmod +x mvnw
-                                    ./mvnw clean install -DskipTests
-                                  
-                                '''
+
 
                                 def depStatus = sh(
                                     script: 'snyk test -d --file=pom.xml',
