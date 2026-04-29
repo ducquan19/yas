@@ -65,6 +65,7 @@ pipeline {
     environment {
         // Define environment variables for Maven commands
         MVN_ARGS = '-B -ntp'
+        SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
     }
 
     stages {
@@ -225,12 +226,12 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk test --file=pom.xml --org=$SNYK_ORG',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk code test --org=$SNYK_ORG',
                                     returnStatus: true
                                 )
 
