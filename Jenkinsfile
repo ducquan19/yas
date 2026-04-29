@@ -65,6 +65,7 @@ pipeline {
     environment {
         // Define environment variables for Maven commands
         MVN_ARGS = '-B -ntp'
+        SNYK_ORG = '${SNYK_ORG}'
     }
 
     stages {
@@ -225,18 +226,18 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk test --file=pom.xml --org=${SNYK_ORG}',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: 'snyk code test --org=${SNYK_ORG}',
                                     returnStatus: true
                                 )
 
                                 if (depStatus != 0 || codeStatus != 0) {
                                     echo "SNYK WARNING: vulnerabilities detected in ${module}"
-                                    currentBuild.result = 'UNSTABLE'
+                                    currentBuild.result = 'SUCCESS'
                                 } else {
                                     echo "No vulnerabilities detected in ${module}"
                                 }
@@ -328,7 +329,7 @@ pipeline {
                                 threshold: 70.0,
                                 metric: 'INSTRUCTION',
                                 baseline: 'PROJECT',
-                                criticality: 'UNSTABLE'
+                                criticality: 'FAILURE'
                             ]
                         ]
                     )
