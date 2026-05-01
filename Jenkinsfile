@@ -17,13 +17,13 @@ def computeChangedFiles() {
     }
 
     try {
-        def out = runCapture(cmd)
+        def out = sh(script: cmd, returnStdout: true).trim()
         return out
             .split(/\r?\n/)
             .collect { it.trim() }
             .findAll { it }
     } catch (err) {
-        def out = runCapture('git -c color.ui=never show --name-only --pretty="" HEAD')
+        def out = sh(script: 'git -c color.ui=never show --name-only --pretty="" HEAD', returnStdout: true).trim()
         return out
             .split(/\r?\n/)
             .collect { it.trim() }
