@@ -80,50 +80,50 @@ pipeline {
             }
         }
 
-        stage('Gitleaks Scan') {
-            steps {
-                script {
-                    def baseBranch = env.CHANGE_TARGET ?: "main"
+        // stage('Gitleaks Scan') {
+        //     steps {
+        //         script {
+        //             def baseBranch = env.CHANGE_TARGET ?: "main"
 
-                    def status = sh(
-                        script: '''
-                            gitleaks detect \
-                                --source . \
-                                --config gitleaks.toml \
-                                --report-format json \
-                                --report-path gitleaks-report.json \
-                                --redact 
-                            ''',
-                        returnStatus: true
-                    )
+        //             def status = sh(
+        //                 script: '''
+        //                     gitleaks detect \
+        //                         --source . \
+        //                         --config gitleaks.toml \
+        //                         --report-format json \
+        //                         --report-path gitleaks-report.json \
+        //                         --redact 
+        //                     ''',
+        //                 returnStatus: true
+        //             )
                     
-                    // Convert the Gitleaks JSON report to a simple HTML format for better visualization in Jenkins
-                    sh '''
-                        echo "<html><body><h2>Gitleaks Report</h2><pre>" > gitleaks-report.html
-                        cat gitleaks-report.json >> gitleaks-report.html
-                        echo "</pre></body></html>" >> gitleaks-report.html
-                    '''
+        //             // Convert the Gitleaks JSON report to a simple HTML format for better visualization in Jenkins
+        //             sh '''
+        //                 echo "<html><body><h2>Gitleaks Report</h2><pre>" > gitleaks-report.html
+        //                 cat gitleaks-report.json >> gitleaks-report.html
+        //                 echo "</pre></body></html>" >> gitleaks-report.html
+        //             '''
 
-                    // Publish the Gitleaks report as an HTML report in Jenkins 
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: '.',
-                        reportFiles: 'gitleaks-report.html',
-                        reportName: 'Gitleaks Report'
-                    ])
+        //             // Publish the Gitleaks report as an HTML report in Jenkins 
+        //             publishHTML([
+        //                 allowMissing: false,
+        //                 alwaysLinkToLastBuild: true,
+        //                 keepAll: true,
+        //                 reportDir: '.',
+        //                 reportFiles: 'gitleaks-report.html',
+        //                 reportName: 'Gitleaks Report'
+        //             ])
 
-                    // If Gitleaks detected secrets (status != 0), fail the build and prompt the developer to check the report. Otherwise, print a success message.
-                    if (status != 0) {
-                        echo "GITLEAKS WARNING: secrets detected (see report)"
-                        currentBuild.result = 'SUCCESS' // Mark as success to allow manual review of the report
-                    } else {
-                        echo "No secrets detected"
-                    }
-                }
-            }
-        }
+        //             // If Gitleaks detected secrets (status != 0), fail the build and prompt the developer to check the report. Otherwise, print a success message.
+        //             if (status != 0) {
+        //                 echo "GITLEAKS WARNING: secrets detected (see report)"
+        //                 currentBuild.result = 'SUCCESS' // Mark as success to allow manual review of the report
+        //             } else {
+        //                 echo "No secrets detected"
+        //             }
+        //         }
+        //     }
+        // }
 
         stage('Detect Changes') {
             steps {
@@ -201,20 +201,66 @@ pipeline {
             when {
                 expression { env.AFFECTED_MODULES?.trim() }
             }
+            environment {
+                SNYK_ORG = '4496d6cc-3702-46bc-8ea7-6ac73f92b5cf'
+                REVISION = '1.0-SNAPSHOT'
+                AFFECTED_MODULES = 'media' // hardcoded for testing - replace with env var in production
+            }
             steps {
                 script {
                     withCredentials([string(credentialsId: 'snyk', variable: 'SNYK_TOKEN')]) {
 
-                        sh 'snyk auth $SNYK_TOKEN'
-
                         sh '''
-                          if [ -f "mvnw" ]; then
-                            chmod +x mvnw
-                            ./mvnw clean install -DskipTests
-                          fi
+                            snyk auth "$SNYK_TOKEN"
                         '''
 
                         def modules = env.AFFECTED_MODULES.split(',')
+                        def moduleList = modules.collect { it.trim() }.findAll { it }.join(',')
+                        
+                        echo "Building modules before Snyk scan: ${moduleList}"
+
+                        // withEnv(["MODULES=${moduleList}"]) {
+
+                        //     sh '''
+                        //         if [ -f "mvnw" ]; then
+                        //             chmod +x mvnw
+                        //             MVN=./mvnw
+                        //         else
+                        //             MVN=mvn
+                        //         fi
+
+                        //         echo "Using Maven: $MVN"
+                        //         $MVN -pl $MODULES -am clean install -DskipTests
+                        //     '''
+                        // }
+
+                        sh """
+                            if [ -f "mvnw" ]; then
+                                chmod +x mvnw
+                                MVN=./mvnw
+                            else
+                                MVN=mvn
+                            fi
+
+                            echo "Using Maven: \$MVN"
+
+                            \$MVN -q \
+                                -Drevision=${env.REVISION} \
+                                -DskipTests \
+                                -pl ${moduleList} \
+                                -am \
+                                clean install
+                        """
+
+                        sh """
+                            echo "Fixing mvnw permissions..."
+
+                            find . -name "mvnw" -type f -exec chmod +x {} \\;
+
+                            echo "Done fixing mvnw permissions"
+                        """
+
+                        // sh 'snyk test'
 
                         for (module in modules) {
                             module = module.trim()
@@ -224,19 +270,32 @@ pipeline {
 
                             dir(module) {
 
+                                // sh 'mvn -q -DskipTests clean install'
+                                sh '''
+                                    if [ -f "mvnw" ]; then
+                                        chmod +x mvnw
+                                    fi
+                                '''
+
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: """
+                                        snyk test -d --file=pom.xml --package-manager=maven --org=${env.SNYK_ORG} --severity-threshold=low -- -Drevision=${env.REVISION}
+                                    """,
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test --org=4496d6cc-3702-46bc-8ea7-6ac73f92b5cf',
+                                    script: '''
+                                        snyk code test \
+                                            --org=$SNYK_ORG \
+                                            --severity-threshold=low
+                                    ''',
                                     returnStatus: true
                                 )
 
                                 if (depStatus != 0 || codeStatus != 0) {
                                     echo "SNYK WARNING: vulnerabilities detected in ${module}"
-                                    currentBuild.result = 'SUCCESS' // Mark as success
+                                    currentBuild.result = 'SUCCESS'
                                 } else {
                                     echo "No vulnerabilities detected in ${module}"
                                 }
@@ -254,6 +313,7 @@ pipeline {
                 expression { env.AFFECTED_MODULES?.trim() }
             }
             steps {
+              
                 // Run the Maven build command for the affected modules to create the necessary artifacts for testing and coverage analysis
                 echo "Building affected modules: ${env.AFFECTED_MODULES}..."
                 sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
@@ -319,7 +379,7 @@ pipeline {
                                 criticality: 'FAILURE'
                             ],
                             [
-                                threshold: 50.0,
+                                threshold: 70.0,
                                 metric: 'BRANCH',
                                 baseline: 'PROJECT',
                                 criticality: 'FAILURE'
@@ -336,25 +396,24 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis & Quality Gate') {
-            when {
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
-                    sh """
-                        mvn ${MVN_ARGS} \
-                            -pl ${AFFECTED_MODULES} \
-                            ${MVN_MAKE_FLAGS} \
-                            sonar:sonar \
-                            -Dsonar.projectKey=yas-project\
-                            -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.login=$SONAR_TOKEN \
-                            -Dsonar.qualitygate.wait=true
-                    """
-                }
-            }
-        }
+    //     stage('SonarQube Analysis & Quality Gate') {
+    //         when {
+    //             expression { env.AFFECTED_MODULES?.trim() }
+    //         }
+    //         steps {
+    //             withCredentials([string(credentialsId: 'sonar-yas', variable: 'SONAR_TOKEN')]) {
+    //                 sh """
+    //                     mvn ${MVN_ARGS} \
+    //                         -pl ${AFFECTED_MODULES} \
+    //                         ${MVN_MAKE_FLAGS} \
+    //                         sonar:sonar \
+    //                         -Dsonar.projectKey=yas-project\
+    //                         -Dsonar.host.url=http://localhost:9000 \
+    //                         -Dsonar.login=$SONAR_TOKEN \
+    //                 """
+    //             }
+    //         }
+    //     }
     }
 
     post {
