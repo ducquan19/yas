@@ -121,6 +121,40 @@ pipeline {
             }
         }
 
+
+
+        stage('Build') {
+            when {
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
+            steps {
+
+                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
+                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
+            }
+        }
+
+        stage('Unit & Integration Tests') {
+            when {
+                expression { env.AFFECTED_MODULES?.trim() }
+            }
+            steps {
+                // Run the Maven verify command for the affected modules to execute tests and generate coverage reports
+                sh """
+                    mvn ${env.MVN_ARGS} \
+                        -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} \
+                        verify \
+                        -ff \
+                        -DtrimStackTrace=true \
+                        -Dsurefire.printSummary=true \
+                        -Dfailsafe.printSummary=true
+                """
+                // Publish unit test and integration test results to Jenkins for reporting and analysis
+                junit allowEmptyResults: true,
+                      testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
+            }
+        }
+
         stage('Snyk Scan') {
             when {
                 expression { env.AFFECTED_MODULES?.trim() }
@@ -169,39 +203,6 @@ pipeline {
                         }
                     }
                 }
-            }
-        }
-
-
-        stage('Build') {
-            when {
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-
-                echo "Building affected modules: ${env.AFFECTED_MODULES}..."
-                sh "mvn ${env.MVN_ARGS} -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} -DskipTests clean package"
-            }
-        }
-
-        stage('Unit & Integration Tests') {
-            when {
-                expression { env.AFFECTED_MODULES?.trim() }
-            }
-            steps {
-                // Run the Maven verify command for the affected modules to execute tests and generate coverage reports
-                sh """
-                    mvn ${env.MVN_ARGS} \
-                        -pl ${env.AFFECTED_MODULES} ${env.MVN_MAKE_FLAGS} \
-                        verify \
-                        -ff \
-                        -DtrimStackTrace=true \
-                        -Dsurefire.printSummary=true \
-                        -Dfailsafe.printSummary=true
-                """
-                // Publish unit test and integration test results to Jenkins for reporting and analysis
-                junit allowEmptyResults: true,
-                      testResults: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
             }
         }
 
