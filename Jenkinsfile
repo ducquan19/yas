@@ -99,7 +99,7 @@ pipeline {
                         affected = allModules
                     }
 
-                    affected = 'storefront-bff' // TEMPORARY OVERRIDE - REMOVE THIS LINE AFTER TESTING
+                    affected = ['storefront-bff']
 
                     // Handle dependency rebuild
                     env.MVN_MAKE_FLAGS = '-am'
