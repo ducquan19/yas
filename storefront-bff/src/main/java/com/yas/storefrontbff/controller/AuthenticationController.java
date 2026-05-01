@@ -15,6 +15,7 @@ public class AuthenticationController {
         if (principal == null) {
             return ResponseEntity.ok(new AuthenticationInfoVm(false, null));
         }
+
         AuthenticatedUserVm authenticatedUser = new AuthenticatedUserVm(principal.getAttribute("preferred_username"));
         return ResponseEntity.ok(new AuthenticationInfoVm(true, authenticatedUser));
     }
