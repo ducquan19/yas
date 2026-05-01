@@ -142,12 +142,20 @@ pipeline {
                             dir(module) {
 
                                 def depStatus = sh(
-                                    script: 'snyk test --file=pom.xml',
+                                    script: '''
+                                        snyk test \
+                                        --file=pom.xml \
+                                        --json-file-output=snyk-dep-report.json
+                                    ''',
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
-                                    script: 'snyk code test',
+                                    script: '''
+                                        snyk code test \
+                                        --no-upload \
+                                        --json-file-output=snyk-code-report.json
+                                    ''',
                                     returnStatus: true
                                 )
 
