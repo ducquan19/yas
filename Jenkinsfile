@@ -99,8 +99,6 @@ pipeline {
                         affected = allModules
                     }
 
-                    affected = ['storefront-bff']
-
                     // Handle dependency rebuild
                     env.MVN_MAKE_FLAGS = '-am'
                     if (affected.contains('common-library')) {
@@ -123,8 +121,6 @@ pipeline {
                 }
             }
         }
-
-
 
         stage('Build') {
             when {
