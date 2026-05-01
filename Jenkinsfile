@@ -99,6 +99,8 @@ pipeline {
                         affected = allModules
                     }
 
+                    affected = 'storefront-bff' // TEMPORARY OVERRIDE - REMOVE THIS LINE AFTER TESTING
+
                     // Handle dependency rebuild
                     env.MVN_MAKE_FLAGS = '-am'
                     if (affected.contains('common-library')) {
