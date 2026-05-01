@@ -164,38 +164,36 @@ pipeline {
             }
             steps {
                 script {
-                    def modules = getModules()
+                    withCredentials([string(credentialsId: 'snyk-quan', variable: 'SNYK_TOKEN')]) {
 
-                    for (module in modules) {
-                        module = module.trim()
-                        if (!module) continue
+                        sh 'snyk auth $SNYK_TOKEN'
 
-                        echo "Running Snyk scan for service: ${module}"
+                        def modules = getModules()
 
-                        dir(module) {
+                        for (module in modules) {
+                            module = module.trim()
+                            if (!module) continue
 
-                            snykSecurity(
-                                snykInstallation: 'snyk@latest',
-                                snykTokenId: 'snyk-plugin-token',
-                                failOnIssues: false,
-                                organisation: '036f61e9-4955-4444-b27c-a427cda4feca',
-                                projectName: module,
-                                targetFile: 'pom.xml',
-                                additionalArguments: '-d --json-file-output=snyk-dep.json'
-                            )
+                            echo "Running Snyk scan for module: ${module} "
 
-                            def codeStatus = sh(
-                                script: '''
-                                    ${SNYK_HOME}/snyk-linux code test
-                                ''',
-                                returnStatus: true
-                            )
+                            dir(module) {
 
-                            if (codeStatus != 0) {
-                                echo "SNYK WARNING: vulnerabilities detected in ${module}"
-                                currentBuild.result = 'SUCCESS'
-                            } else {
-                                echo "No vulnerabilities detected in ${module}"
+                                def depStatus = sh(
+                                    script: 'snyk test --file=pom.xml --org=036f61e9-4955-4444-b27c-a427cda4feca',
+                                    returnStatus: true
+                                )
+
+                                def codeStatus = sh(
+                                    script: 'snyk code test --org=036f61e9-4955-4444-b27c-a427cda4feca',
+                                    returnStatus: true
+                                )
+
+                                if (depStatus != 0 || codeStatus != 0) {
+                                    echo "SNYK WARNING: vulnerabilities detected in ${module}"
+                                    currentBuild.result = 'SUCCESS'
+                                } else {
+                                    echo "No vulnerabilities detected in ${module}"
+                                }
                             }
                         }
                     }
@@ -273,6 +271,10 @@ pipeline {
             // Upload artifact
             archiveArtifacts allowEmptyArchive: true,
                 artifacts: '**/target/*.jar'
+
+            // Upload test reports
+            archiveArtifacts allowEmptyArchive: true,
+                artifacts: '**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml'
 
             // Upload Gitleaks report
             archiveArtifacts allowEmptyArchive: true,
