@@ -179,7 +179,7 @@ pipeline {
 
                                 snykSecurity(
                                     snykInstallation: 'snyk@latest',
-                                    snykCredentialsId: 'snyk-quan',
+                                    snykTokenId: 'snyk-plugin-token',
                                     failOnIssues: false,
                                     projectName: module,
                                     additionalArguments: '--file=pom.xml --json-file-output=snyk-dep.json'
