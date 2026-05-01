@@ -1,17 +1,34 @@
 // Calculate the list of changed files
 def computeChangedFiles() {
-    def base = env.CHANGE_TARGET ?
-        "origin/${env.CHANGE_TARGET}" :
-        (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: env.GIT_PREVIOUS_COMMIT)
+    def cmd = null
 
-    def cmd = base ?
-        "git diff --name-only ${base}...HEAD" :
-        'git show --name-only --pretty="" HEAD'
+    if (env.CHANGE_TARGET) {
+        // For pull requests, compare the current branch with the target branch
+        cmd = "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD"
+    } else if (env.GIT_PREVIOUS_SUCCESSFUL_COMMIT && env.GIT_COMMIT) {
+        // For regular commits, compare the current commit with the previous successful commit
+        cmd = "git diff --name-only ${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT}..${env.GIT_COMMIT}"
+    } else if (env.GIT_PREVIOUS_COMMIT && env.GIT_COMMIT) {
+        // If no previous successful commit is available, compare the current commit with the previous commit
+        cmd = "git diff --name-only ${env.GIT_PREVIOUS_COMMIT}..${env.GIT_COMMIT}"
+    } else {
+        // Fallback: list files changed in the latest commit
+        cmd = 'git show --name-only --pretty="" HEAD'
+    }
 
-    return sh(script: cmd, returnStdout: true)
-        .trim()
-        .split("\n")
-        .findAll { it }
+    try {
+        def out = runCapture(cmd)
+        return out
+            .split(/\r?\n/)
+            .collect { it.trim() }
+            .findAll { it }
+    } catch (err) {
+        def out = runCapture('git -c color.ui=never show --name-only --pretty="" HEAD')
+        return out
+            .split(/\r?\n/)
+            .collect { it.trim() }
+            .findAll { it }
+    }
 }
 
 def getModules() {
@@ -80,13 +97,6 @@ pipeline {
                     def rebuildAll = changedFiles.any { f ->
                         f == 'pom.xml' ||
                         f.startsWith('checkstyle/')
-                    }
-
-                    // Optional: rebuild if Jenkinsfile changed
-                    if (env.REBUILD_ALL_ON_JENKINSFILE?.toBoolean()) {
-                        rebuildAll = rebuildAll || changedFiles.any {
-                            it.equalsIgnoreCase('Jenkinsfile')
-                        }
                     }
 
                     def affected = allModules.findAll { module ->
@@ -207,7 +217,7 @@ pipeline {
 
                     echo "Running coverage for modules: ${modules.join(', ')}"
 
-                    // 2. Build Jacoco report paths dynamically
+                    // Build Jacoco report paths dynamically
                     def coverageTools = modules.collect { module ->
                         [
                             parser: 'JACOCO',
@@ -215,7 +225,7 @@ pipeline {
                         ]
                     }
 
-                    // 3. Execute coverage gate
+                    // Execute coverage gate
                     recordCoverage(
                         tools: coverageTools,
                         sourceCodeRetention: 'NEVER',
