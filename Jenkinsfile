@@ -180,7 +180,7 @@ pipeline {
                                 failOnIssues: false,
                                 projectName: module,
                                 targetFile: 'pom.xml',
-                                additionalArguments: '--json-file-output=snyk-dep.json'
+                                additionalArguments: '-d --json-file-output=snyk-dep.json'
                             )
 
                             def codeStatus = sh(
