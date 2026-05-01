@@ -29,6 +29,7 @@ pipeline {
     environment {
         MVN_ARGS = '-B -ntp'
         SERVICES = 'common-library backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront-bff tax webhook sampledata recommendation delivery'
+        SNYK_HOME = tool name: 'Snyk'
     }
 
     stages {
@@ -163,7 +164,6 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'snyk-quan', variable: 'SNYK_TOKEN')]) {
 
-                        sh 'snyk auth $SNYK_TOKEN'
 
                         def modules = getModules()
 
@@ -175,25 +175,22 @@ pipeline {
 
                             dir(module) {
 
-                                def depStatus = sh(
-                                    script: '''
-                                        snyk test \
-                                        --file=pom.xml \
-                                        --json-file-output=snyk-dep-report.json
-                                    ''',
-                                    returnStatus: true
+                                snykSecurity(
+                                    snykInstallation: 'Snyk',
+                                    snykCredentialsId: 'snyk-quan',
+                                    failOnIssues: false,
+                                    projectName: module,
+                                    additionalArguments: '--file=pom.xml --json-file-output=snyk-dep.json'
                                 )
 
                                 def codeStatus = sh(
                                     script: '''
-                                        snyk code test \
-                                        --no-upload \
-                                        --json-file-output=snyk-code-report.json
+                                        ${SNYK_HOME}/snyk-linux code test
                                     ''',
                                     returnStatus: true
                                 )
 
-                                if (depStatus != 0 || codeStatus != 0) {
+                                if (codeStatus != 0) {
                                     echo "SNYK WARNING: vulnerabilities detected in ${module}"
                                     currentBuild.result = 'SUCCESS'
                                 } else {
