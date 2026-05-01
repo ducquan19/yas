@@ -164,40 +164,37 @@ pipeline {
             }
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'snyk-quan', variable: 'SNYK_TOKEN')]) {
+                    def modules = getModules()
 
+                    for (module in modules) {
+                        module = module.trim()
+                        if (!module) continue
 
-                        def modules = getModules()
+                        echo "Running Snyk scan for service: ${module}"
 
-                        for (module in modules) {
-                            module = module.trim()
-                            if (!module) continue
+                        dir(module) {
 
-                            echo "Running Snyk scan for service: ${module}"
+                            snykSecurity(
+                                snykInstallation: 'snyk@latest',
+                                snykTokenId: 'snyk-plugin-token',
+                                failOnIssues: false,
+                                projectName: module,
+                                targetFile: 'pom.xml',
+                                additionalArguments: '--json-file-output=snyk-dep.json'
+                            )
 
-                            dir(module) {
+                            def codeStatus = sh(
+                                script: '''
+                                    ${SNYK_HOME}/snyk-linux code test
+                                ''',
+                                returnStatus: true
+                            )
 
-                                snykSecurity(
-                                    snykInstallation: 'snyk@latest',
-                                    snykTokenId: 'snyk-plugin-token',
-                                    failOnIssues: false,
-                                    projectName: module,
-                                    additionalArguments: '--file=pom.xml --json-file-output=snyk-dep.json'
-                                )
-
-                                def codeStatus = sh(
-                                    script: '''
-                                        ${SNYK_HOME}/snyk-linux code test
-                                    ''',
-                                    returnStatus: true
-                                )
-
-                                if (codeStatus != 0) {
-                                    echo "SNYK WARNING: vulnerabilities detected in ${module}"
-                                    currentBuild.result = 'SUCCESS'
-                                } else {
-                                    echo "No vulnerabilities detected in ${module}"
-                                }
+                            if (codeStatus != 0) {
+                                echo "SNYK WARNING: vulnerabilities detected in ${module}"
+                                currentBuild.result = 'SUCCESS'
+                            } else {
+                                echo "No vulnerabilities detected in ${module}"
                             }
                         }
                     }
