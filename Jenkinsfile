@@ -29,7 +29,7 @@ pipeline {
     environment {
         MVN_ARGS = '-B -ntp'
         SERVICES = 'common-library backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront-bff tax webhook sampledata recommendation delivery'
-        SNYK_HOME = tool name: 'Snyk'
+        SNYK_HOME = tool name: 'snyk@latest'
     }
 
     stages {
