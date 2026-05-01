@@ -219,21 +219,6 @@ pipeline {
                         
                         echo "Building modules before Snyk scan: ${moduleList}"
 
-                        // withEnv(["MODULES=${moduleList}"]) {
-
-                        //     sh '''
-                        //         if [ -f "mvnw" ]; then
-                        //             chmod +x mvnw
-                        //             MVN=./mvnw
-                        //         else
-                        //             MVN=mvn
-                        //         fi
-
-                        //         echo "Using Maven: $MVN"
-                        //         $MVN -pl $MODULES -am clean install -DskipTests
-                        //     '''
-                        // }
-
                         sh """
                             if [ -f "mvnw" ]; then
                                 chmod +x mvnw
@@ -252,16 +237,6 @@ pipeline {
                                 clean install
                         """
 
-                        sh """
-                            echo "Fixing mvnw permissions..."
-
-                            find . -name "mvnw" -type f -exec chmod +x {} \\;
-
-                            echo "Done fixing mvnw permissions"
-                        """
-
-                        // sh 'snyk test'
-
                         for (module in modules) {
                             module = module.trim()
                             if (!module) continue
@@ -270,7 +245,6 @@ pipeline {
 
                             dir(module) {
 
-                                // sh 'mvn -q -DskipTests clean install'
                                 sh '''
                                     if [ -f "mvnw" ]; then
                                         chmod +x mvnw
@@ -279,16 +253,14 @@ pipeline {
 
                                 def depStatus = sh(
                                     script: """
-                                        snyk test -d --file=pom.xml --package-manager=maven --org=${env.SNYK_ORG} --severity-threshold=low -- -Drevision=${env.REVISION}
+                                        snyk test -d --file=pom.xml --package-manager=maven --severity-threshold=low -- -Drevision=${env.REVISION}
                                     """,
                                     returnStatus: true
                                 )
 
                                 def codeStatus = sh(
                                     script: '''
-                                        snyk code test \
-                                            --org=$SNYK_ORG \
-                                            --severity-threshold=low
+                                        snyk code test --org=$SNYK_ORG --severity-threshold=low
                                     ''',
                                     returnStatus: true
                                 )
