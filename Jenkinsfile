@@ -320,7 +320,7 @@ pipeline {
                                 criticality: 'FAILURE'
                             ],
                             [
-                                threshold: 50.0,
+                                threshold: 70.0,
                                 metric: 'BRANCH',
                                 baseline: 'PROJECT',
                                 criticality: 'FAILURE'
