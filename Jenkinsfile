@@ -178,6 +178,7 @@ pipeline {
                                 snykInstallation: 'snyk@latest',
                                 snykTokenId: 'snyk-plugin-token',
                                 failOnIssues: false,
+                                organisation: '036f61e9-4955-4444-b27c-a427cda4feca',
                                 projectName: module,
                                 targetFile: 'pom.xml',
                                 additionalArguments: '-d --json-file-output=snyk-dep.json'
