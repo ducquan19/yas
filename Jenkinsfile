@@ -178,7 +178,7 @@ pipeline {
                             dir(module) {
 
                                 snykSecurity(
-                                    snykInstallation: 'Snyk',
+                                    snykInstallation: 'snyk@latest',
                                     snykCredentialsId: 'snyk-quan',
                                     failOnIssues: false,
                                     projectName: module,
