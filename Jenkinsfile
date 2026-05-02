@@ -179,7 +179,7 @@ pipeline {
 
                         def modules = getModules()
                         
-                        def moduleList = modules.join(', ')
+                        def moduleList = modules.join(',')
                         echo "Running Snyk scan for modules: ${moduleList}"
 
                         sh """
