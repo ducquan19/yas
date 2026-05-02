@@ -48,6 +48,7 @@ pipeline {
         SERVICES = 'common-library backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront-bff tax webhook sampledata recommendation delivery'
         SNYK_HOME = tool name: 'snyk@latest'
         REVISION = '1.0-SNAPSHOT'
+        AFFECTED_MODULES = 'media'
     }
 
     stages {
@@ -168,9 +169,6 @@ pipeline {
         stage('Snyk Scan') {
             when {
                 expression { env.AFFECTED_MODULES?.trim() }
-            }
-            environment {
-                AFFECTED_MODULES = 'media'
             }
             steps {
                 script {
