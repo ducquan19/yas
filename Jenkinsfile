@@ -169,6 +169,9 @@ pipeline {
             when {
                 expression { env.AFFECTED_MODULES?.trim() }
             }
+            environment {
+                AFFECTED_MODULES = 'media'
+            }
             steps {
                 script {
                     withCredentials([string(credentialsId: 'snyk-quan', variable: 'SNYK_TOKEN')]) {
