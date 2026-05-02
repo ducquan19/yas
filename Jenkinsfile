@@ -235,7 +235,6 @@ pipeline {
                                     script: """
                                         echo "Running Snyk Code Test and pushing report..."
                                         snyk code test \
-                                            --org=${env.SNYK_ORG} \
                                             --severity-threshold=low \
                                             --project-name=YAS-${module}-Code \
                                             --report || true
