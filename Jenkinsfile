@@ -179,8 +179,8 @@ pipeline {
 
                         def modules = getModules()
                         
-                        def modulesList = modules.join(', ')
-                        echo "Running Snyk scan for modules: ${modulesList}"
+                        def moduleList = modules.join(', ')
+                        echo "Running Snyk scan for modules: ${moduleList}"
 
                         sh """
                             if [ -f "mvnw" ]; then
