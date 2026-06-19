@@ -49,8 +49,12 @@ pipeline {
 
     environment {
         MVN_ARGS = '-B -ntp'
-        SERVICES = 'common-library backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront-bff tax webhook sampledata recommendation delivery'
-        DOCKER_SERVICES = 'backoffice backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront storefront-bff tax webhook sampledata recommendation'
+        // Maven modules are built and tested even when they are not deployed to Kubernetes.
+        MAVEN_MODULES = 'common-library backoffice-bff cart customer inventory location media order payment-paypal payment product promotion rating search storefront-bff tax webhook sampledata recommendation delivery'
+
+        // YAS applications installed by k8s/deploy/deploy-yas-applications.sh.
+        // Infrastructure such as Kafka, Keycloak and PostgreSQL uses upstream images.
+        DEPLOYABLE_SERVICES = 'backoffice backoffice-bff storefront storefront-bff cart customer inventory location media order payment payment-paypal product promotion rating search tax recommendation webhook sampledata'
         SNYK_HOME = tool name: 'snyk@latest'
         REVISION = '1.0-SNAPSHOT'
     }
@@ -96,8 +100,8 @@ pipeline {
         stage('Detect Changes') {
             steps {
                 script {
-                    def allModules = env.SERVICES.split(' ')
-                    def allDockerModules = env.DOCKER_SERVICES.split(' ')
+                    def allModules = env.MAVEN_MODULES.split(' ')
+                    def allDockerModules = env.DEPLOYABLE_SERVICES.split(' ')
                     def changedFiles = computeChangedFiles()
 
                     // Detect rebuild all
