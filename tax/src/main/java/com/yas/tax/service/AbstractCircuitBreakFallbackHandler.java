@@ -15,7 +15,7 @@ abstract class AbstractCircuitBreakFallbackHandler {
     }
 
     private void handleError(Throwable throwable) throws Throwable {
-        log.error("Circuit breaker records an error. Detail {}", throwable.getMessage());
+        log.error("Circuit breaker records error. Detail {}", throwable.getMessage());
         throw throwable;
     }
 }
