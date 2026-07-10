@@ -26,7 +26,7 @@ public class SecurityConfig {
                         .requestMatchers("/storefront/**").permitAll()
                         .requestMatchers("/backoffice/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverterForKeycloak())))
                 .build();
     }
 
